@@ -60,3 +60,11 @@ End loan
 
 ## Data Types
 
+Text.  
+Number.
+Boolean.
+Time.
+Money.
+Picture. 
+Sound. 
+
