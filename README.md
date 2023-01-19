@@ -59,12 +59,16 @@ Programs in MBL are organized into objects, inspired by and similarly functional
 
 Text
 > A string of bytes that, interfaced through MBL, are accessed as the visible range of ASCII characters with others being interpolated in square brackets.  Literal representations may be written between quotes with interpolations allowed except when the letter "r" (for raw) preceeds the opening quote.  Within square brackets, any string expression may be presented for interpolation.  For example, `"The price of [num] eggs at [price] each is [num*price]."`.
+
 Number
 > a real number.  The literal form may include up to one decimal and no more than one comma between every 3 digits left of the decimal. The purpose of this is to write literal numbers in a manner that avoids misinterpretation.  For example, `125,000,000.000` is one-hudred-twenty-five-million.  The commas make careful counting of zeros unnecessary.
+
 Boolean
 > Yes or No. This `Yes` and `No` is the literal form and equates to what is often true/false or 1/0, in other languages.  These words are used to enhance clarity in reading.
+
 Time
 > Internally, a number of seconds.  This may represent a duration or, if relative to 1 CE, a specific point in time.  Literal form may be heuristically interpreted from between quotes where the opening quote is preceeded by the letter "t" (for time). Or, a time expression may be specified.  For example, `T"2023-06-15 15:30:00"` would understand as the date and time, in 24 hour time.  Where different interpretations are possible, 24 hour time is assumed over alternatives.  Also, time is always UTC, internally so conversions to and from Text would translate between UTC and local time, by default.
+
 Money
 > A number (as numbers are described above) that follows defined rules for its (definable) currency type, the default being USDollar.  In literal form, this is a number prefixed with a "$" symbol.  The decimal may be no more than one thousandth of the currency's base which, for USDollar, is one dollar.  For example, `$13,000.00` is $13 thousand dollars.  By default, it is USDollars but you may specify other currencies after, such as this example: `$15,000 Won` for Korean Won, instead of dollars.  
 
