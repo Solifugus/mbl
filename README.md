@@ -30,10 +30,8 @@ In addition to this, feature completeness requires a few other capabilities that
 Programs in MBL are organized into objects, inspired by and similarly functional to Javascript objects.  However in MBL, an "unflavored" object has no pollution in its namespace, scopes cascades, and proto-typing also cascades.  So there is a global object that is "flovored" with the standard elements of the language itself, including functions to inspect objects and a few basic objects that may be used to "flavor" other objects.
 
 ```
-Tool loan(amount, interest, payment, perYear=12, term=360, begin ):
-  If( begin = Missing ): begin = T"Next Month 15 Days"
-  payments = []
-  Function amortize():
+  Service amortize( amount; interest; payment; perYear:12; term:360; begin ):
+    Constrain( begin ?= Unknown ): begin = T"Next Month 15 Days"
     periods = []
     period = { paymentDate:paymentDate, principalPaid:0, interestPaid:0, principalBalance:amount, interestTotal:0 }
     While( period.principalBalance >= payment ):
@@ -47,24 +45,27 @@ Tool loan(amount, interest, payment, perYear=12, term=360, begin ):
     period = new period
     period.paymentDate += T"1 month"
     period.principalPaid = period.principalBalance
-    period.interestPaid:0,
+    period.interestPaid:0
     Append period To periods
-    return periods 
-  End amortize
+  End amortize With periods 
   
-  Function sayHello(): Output "Hello" To stdout 
+ loan = { amount:$125,000; interest:4.56; payment:$1,500 }
+ payments = amortize( loan.* )
   
-End loan
 ```
 
 
 ## Data Types
 
-Text.  
-Number.
-Boolean.
-Time.
-Money.
-Picture. 
-Sound. 
+Text
+> A string of bytes that, interfaced through MBL, are accessed as the visible range of ASCII characters with others being interpolated in square brackets.  Literal representations may be written between quotes with interpolations allowed except when the letter "r" (for raw) preceeds the opening quote.  Within square brackets, any string expression may be presented for interpolation.  For example, `"The price of [num] eggs at [price] each is [num*price]."`.
+Number
+> a real number.  The literal form may include up to one decimal and no more than one comma between every 3 digits left of the decimal. The purpose of this is to write literal numbers in a manner that avoids misinterpretation.  For example, `125,000,000.000` is one-hudred-twenty-five-million.  The commas make careful counting of zeros unnecessary.
+Boolean
+> Yes or No. This `Yes` and `No` is the literal form and equates to what is often true/false or 1/0, in other languages.  These words are used to enhance clarity in reading.
+Time
+> Internally, a number of seconds.  This may represent a duration or, if relative to 1 CE, a specific point in time.  Literal form may be heuristically interpreted from between quotes where the opening quote is preceeded by the letter "t" (for time). Or, a time expression may be specified.  For example, `T"2023-06-15 15:30:00"` would understand as the date and time, in 24 hour time.  Where different interpretations are possible, 24 hour time is assumed over alternatives.  Also, time is always UTC, internally so conversions to and from Text would translate between UTC and local time, by default.
+Money
+> A number (as numbers are described above) that follows defined rules for its (definable) currency type, the default being USDollar.  In literal form, this is a number prefixed with a "$" symbol.  The decimal may be no more than one thousandth of the currency's base which, for USDollar, is one dollar.  For example, `$13,000.00` is $13 thousand dollars.  By default, it is USDollars but you may specify other currencies after, such as this example: `$15,000 Won` for Korean Won, instead of dollars.  
+
 
