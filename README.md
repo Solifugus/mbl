@@ -3,9 +3,40 @@ Modern Business Language
 
 # Overviev
 
-Although for decades now, computer software has played a vital role in every business, the last programming language developed specifically for general purpose business needs was COBOL, first created in 1959.  Since then, COBOL has experienced modernization in terms of generic trends, such as the addition of object-orientation, but nevertheless remains a low-level language lacking in a variety of higher level features and capabilities desired for efficient business data processing, data integrations, and business applications.
+Although computer software has played a vital role in every business for decades now, the last programming language developed specifically for general purpose business needs was COBOL, first created in 1959.  Since then, COBOL has experienced modernization in terms of generic trends, such as the addition of object-orientation, but nevertheless remains a low-level language lacking in a variety of higher level features and capabilities desired for efficient business data processing, data integrations, and business applications.
 
-On a broad level, the following features and capabilities are important:
+Modern Business Language (MBL), on the other hand, is specifically made for data safety and efficiency in a world of regularly changing business processes.  Further, it is built with the lessons 50 years of learning since COBOL and marching bolding into the new world of data science and artificial intelligence on the international business landscape.
+
+## Table of Contents
+- [Introduction](#introduction)
+- [Features & Capilities](#features & Capabilities)
+  - [Data Safety](#data-safety)
+  - [Disaster Recovery](#disaster-recovery)
+  - [Auditability](#auditability)
+  - [Resilience to Change](#resilience-to-change)
+  - [Fast Onboarding of New Developers]{#Fast Onboarding of New Developers}
+  - [Unlimited Scalability](#Unlimited Scalability)
+  - [High Developer Performance](#High Developer Performance)
+  - [High Execution Performance](#High Execution Performance)
+  - [Enterprise Interfaces](#Enterprise Interfaces)
+- [Design Concepts](#design-concepts)
+  - [Programming Structure](#programming-structure)
+  - [Data Types](#data-types)
+
+
+# Introduction
+
+Modern Business Language (MBL) takes a fresh wholistic look at business computing.  It strives to provide all desired capabilities and features with minimal necessary complexities or work.  
+
+The way to develop in MBL is generally different than other programming languages.  While you may specific step-by-step instructions, MBL is driven by conditions mapped to assignments.  Consequently, there is no starting or stopping of programs, per se.  Rather, there are conditions upon which things will happen.  In this way, MBL programs just "live" continously.  Furthermore, MBL is capable of making decisions based on how contemplations of what-if scenarios and how they affect preferences.
+
+Although MBL may run on a single server, it is designed with the ability to interlink with multiple instances on the same or additional servers to transparently spread the load of data storage and execution across them, in addition to sharing other resources between them.  However, programs are written the same, regardless of it you have only one or many servers running.  All interlink to form a peer-to-peer mesh network that acts virtually as if it is one.
+
+A Program in MBL is a collection of services, each of which executes on beat or off beat.  That is, there is a heart beat for coordination of operations across the mesh.  All services that operate on beat check their conditions for execution when a new heart beat begins and, if so, prepares its affects to be implemented for the next beat.  Conversely, an off beat service only executes when explicitly called.
+
+# Features and Capabilities
+
+The following is a list of features and capabilities that are important for a general purpose business language and how MBL addresses each.  These features and capabilities are those likely of interest to IT managers.  They are addressed, however, more so technically. 
 
 * Data Safety
 * Disaster Recovery
@@ -58,7 +89,7 @@ Furthermore, all long term storage in the MBL mesh data store are stored accordi
 
 Finally, data are kept in a tree graph form, which is more or less amorphous such that data may be retrieved by means of its relationship to each other.  This allows for the ability to ask what you want to see without regard for where it might be.  Conventionally, an organization may spent many man-hours searching through folders or other historical data repositories trying to reconstruct historic data and produce it int he format requested by auditors.
 
-## Resilience to Changes
+## Resilience to Change
 
 Traditionally, software is written as a matter of procedures expecting data in particular places and structured in particular ways to support those procedures.  Therefore, when changes are made to business processes, it is not only necessary to modify the procedures but also the relative data structures and to develop a data migration process to convert from the old to new structure.  Furthermore, modifications in surrounding procedures must often be adjusted for compatibility.
 
@@ -95,11 +126,15 @@ To add capacity, just think in terms of adding the capacity.  So long as MBL is 
 
 ## High Developer Performance
 
-Developer performance is achieve through 
+Developer performance is achieve through minimizing work necessary to analyze processes, derive desirable solutions, testing, and finally employing those solutions.  This is accomplished through a combination of high level controls, agency, and contemplation.  The developer need not wonder where anything is but specify whatever is of interest rather by what it is.  The developer may inquire of MBL what leads to a result of interest or how to best achieve a result of interest.  MBL may then contemplate the what-if scenario of a considered change and inform the developer of the consequent results.  If good, the develop may implement thc change. 
 
 ## High Execution Performance
 
+MBL priorities safety and developer performance over execution performance.  However, this limitation predominantly affects execution performance on individual servers.  The mesh data storage and execution model of MBL allows for extensive distributed processes and therefore very high execution performance overall, in nearly all cases of business data processing.
+
 ## Enterprise Interfaces
+
+MBL provides a universal interface notation.  The downside of the conventional Graphical User Interface (GUI) and of more contemporary web interfaces is inconsistency and, in many cases, difficulty of automation.  This is a light weight text notation to specify all that is necessary to build an interface of any kind.  This is meant to GUI, Web, REST, or conversational (text).
 
 # Design Concepts
 
@@ -109,7 +144,7 @@ In terms of feature completeness for a business language, I want to begin with s
 
 In addition to this, feature completeness requires a few other capabilities that tend to be supported but can be simplified and smoothed out, nonetheless.  The can be applied in a default function libraries including but not limited to: web services, email, file transfer, encryption, and report parsing and production (flat, spreadsheet, and PDF files).
 
-## Programing Structure
+## Program Structure
 
 Programs in MBL are organized into objects, inspired by and similarly functional to Javascript objects.  However in MBL, an "unflavored" object has no pollution in its namespace, scopes cascades, and proto-typing also cascades.  So there is a global object that is "flovored" with the standard elements of the language itself, including functions to inspect objects and a few basic objects that may be used to "flavor" other objects.
 
@@ -137,7 +172,6 @@ Programs in MBL are organized into objects, inspired by and similarly functional
  payments = amortize( loan.* )
   
 ```
-
 
 ## Data Types
 
