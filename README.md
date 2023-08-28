@@ -32,6 +32,15 @@ Whether running on a single server or across a network of interconnected instanc
 
 A MBL program consists of services that execute on beats (scheduled times) or off beats (on-demand). This heartbeat coordination ensures seamless mesh network operation.
 
+Example:
+```mbl
+program importNewFiles( vendor_folder ):
+  foreach( file, vendor_folder ):
+    if( imported_files[ file.name = Nothing ] ):
+      import( file )
+      imported_files << file.name
+```
+
 # Features and Capabilities
 
 Here's a concise look at how MBL addresses crucial business language requirements:
