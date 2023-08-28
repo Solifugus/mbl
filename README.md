@@ -53,7 +53,7 @@ MBL tackles audit challenges through data safety, temporal data storage, and tre
 
 ## Resilience to Change
 
-MBL excels in adapting to evolving business processes. Data structure flexibility and objective execution mean processes execute based on conditions, irrespective of data changes. There's no need for extensive procedural modifications, making MBL a "living" language.
+MBL excels in adapting to evolving business processes. Data structure flexibility and objective execution mean processes execute based on conditions, irrespective of data changes. There's no need for extensive procedural modifications, making MBL a language that never sleeps.
 
 ## Fast Onboarding of New Developers
 
@@ -90,9 +90,37 @@ service ship_order( order[paid >= order.balance and product.instock = true and s
 
 ## Data Types
 
-MBL supports essential data types:
-- **Text:** Strings of bytes with ASCII characters and interpolated elements.
-- **Number:** Real numbers with comma-separated thousands for clarity.
-- **Boolean:** Yes or No for enhanced readability.
-- **Time:** Representing durations or specific times in UTC.
-- **Money:** Numbers with defined currency rules, defaulting to USDollar.
+MBL simplifies data handling by primarily focusing on three fundamental data types:
+
+- **Nothing:** This represents the absence of data or an undefined value. It's useful when a variable or field doesn't have a meaningful value to assign.
+
+- **Unknown:** Similar to "Nothing," "Unknown" indicates that the data's value is currently unknown or uncertain. It can be particularly valuable when working with incomplete or ambiguous information.
+
+- **Text:** The core data type in MBL, "Text" is a versatile type that can take on different forms when it adheres to specific constraints. MBL recognizes built-in forms within text, including:
+
+  - **Number:** When text follows specific formatting rules for numbers, MBL interprets it as a numerical value. For example, `"123.45"` would be recognized as the number 123.45.
+
+  - **Time:** Text that conforms to predefined date and time formats can be treated as time data. For instance, `T"2023-06-15 15:30:00"` is recognized as a specific date and time.
+
+  - **Money:** When text adheres to currency formatting rules, MBL interprets it as a monetary value. For example, `"$1,234.56"` is recognized as 1,234.56 in the default currency (USDollar).
+
+  - **Record:** Text can represent structured data when it conforms to the syntax of a record. Records allow you to group related data fields together, enhancing data organization and manipulation.
+
+These three fundamental data types, along with their specialized forms within text, provide the foundation for managing data in MBL. By simplifying the data model to these core types, MBL promotes clarity and flexibility in data handling.
+
+## Variables and Assignments
+
+A variable is a label that holds a value.  The value may be of any data type consistent with any constraints applied to the variable.  In MBL, a variable is declared by assigning a value to it.  By default, all variables hold the value Nothing.
+
+- To assign nothing (effectively undeclaring): `x = Nothing`
+- To assign a strictly literal string: `x = "my literal string"`
+- To assign a string with interpolated values: `x = f"The charge for [num] apples at [price] each is [num*price]."`
+- To assign a number: `x = 123.45`
+- To assign a large number: `x = 1_200_400.25` (underscores separate thousands)
+- To assign a US dollar value: `x = $31_500.00`
+- To assign a Korean Won value: `x = $1_500 Won`
+- To assign a time: `x = t"15:30:00"`
+- To assign a datetime: `x = t"2023-08-15 15:30:00"`
+- To assign time as a duration: `x = 15 minutes 23 seconds`
+- To assign metric measures: `x = 1.5 kilograms`
+
