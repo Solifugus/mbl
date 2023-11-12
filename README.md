@@ -133,3 +133,51 @@ A variable is a label that holds a value.  The value may be of any data type con
 - To assign time as a duration: `x = 15 minutes 23 seconds`
 - To assign metric measures: `x = 1.5 kilograms`
 
+# Language Implementation Design
+
+This language is implemented in an unusual way.
+Source code is processes through a lexical analyzer into tokens.
+Each token is associated with a function that returns a value.
+By default, an alphanumeric token returns the last value it was assigned as modified by any token adjacent to the right.
+In other words, a token may offer the token to the right the opportunity to modify it before returning the final value.
+The returned value also includes the index of the next token to execute.
+
+Philosophically, in MBL, there a variable is merely a special (default) class of function.
+
+## Lexer
+
+The Lexer converts source code text into program tokens.
+So it converts UTF8 text to the token types:
+- Text.  This is any UTF8 text within quotes, such as "A line of text".
+- Numeric.  This is a string of numeric digits with a few exceptions: one optional period (".") or any number of underscores are allowed between numeric digits and a single negative symbol ("-") is allowed at the start or end.
+- Alphanumeric.  one or more adjacent alphanumeric characters where the first is alphabetic.
+- New Line.  One or more adjacent new line characters.  This token should carry the count of adjacent new line characters.
+- Tab.  One or more adjacent tab characters.  This token should carry the count of adjacent tabs.
+- Symbol.  Any other visible character, as its own individual token.
+
+## Placer
+
+The Placer derives the structure of the tokens and places them in the appropriate storage locations.
+This includes the creation of links necessary to integrate with other code already in storage.
+
+## Runner
+
+The Runner executes the functions at a specified place in storage.
+This is done by executing the first token and then its returned next token until all tokens have been executed.
+To execute a token, a value is passed to it.  The Runner will pass the Nothing value.
+A token returns a value and the index of the next (not yet run token).  
+Each token's associated function may or may not call the token to the right passing its value and accepting a modified value plus the index to the next unexecuted token.
+
+# Bootsrap tokens
+
+To make this language work, it must begin with a set of hard-coded functions.
+The runner should have already applied code definitions to by means of the ":" operator.
+The "=" assignment operator should call the token on the right to gather a value and return instructions to the token on the left to assign the value to itself.
+Similarly, the are boostrap tokens for basic arithmetic and logical operations.
+The Text and Numeric tokens should have their own specialized functions.
+Every function may optionally take parameters, suffixed within braces, so as to affect what they do.
+All of this will be features added incrementally.
+
+However, the ":" operator is a way of assigning programming code to a token.  
+This allows for the definition of custom tokens.
+
