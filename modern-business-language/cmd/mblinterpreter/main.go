@@ -8,9 +8,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/your-username/modern-business-language/pkg/lexer"
-	"github.com/your-username/modern-business-language/pkg/placer"
-	"github.com/your-username/modern-business-language/pkg/runner"
+	"github.com/Solifugus/mbl/pkg/lexer"
+	"github.com/Solifugus/mbl/pkg/placer"
+	"github.com/Solifugus/mbl/pkg/runner"
 )
 
 func main() {
@@ -50,4 +50,3 @@ func main() {
 
 	fmt.Println("MBL program executed successfully!")
 }
-

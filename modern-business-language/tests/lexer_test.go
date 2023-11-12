@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/your-username/modern-business-language/pkg/lexer"
+	"github.com/Solifugus/mbl/pkg/lexer"
 )
 
 func TestLexerLex(t *testing.T) {
@@ -41,4 +41,3 @@ func TestLexerLex(t *testing.T) {
 		})
 	}
 }
-

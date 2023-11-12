@@ -1,3 +1,3 @@
-module github.com/solifugus/modern-business-language
+module github.com/Solifugus/mbl
 
 go 1.20
