@@ -1,0 +1,213 @@
+# Modern Business Language
+
+
+## Comments
+
+A comment is initiated with any number of adjacent "#" symbols (unless in a string literal) and ends with the same number of adjacent "#" symbols.
+Consequently, comments may be recursive.
+
+
+## Data Value Types
+
+- Nothing.  This is the value any non-assigned variable returns.  Assigning
+nothing also destroys a variable.
+- Anything.  Any value will match this and affects of anything, such as in
+arithmetic, allow the MBL interpreter to select a value conforming to the need.
+- Unknown.  Used for ternary operations.  An unknown may have the .reason (text description) and .possibles (list) attributes.
+- Boolean.  True or False.
+- Number.  High precision floating point value.  Literal may include one decimal and any number of underscores within (but not prefixed or suffixed).  The underscores are purely for visual clarity purposes.
+- Text.  UTF-8.  Literal strings begin with one or more adjacent quotes and end with the same number of adjacent quotes.  There are no escapes.
+- Time.  Has properties Year, Month, Day, Hour, Minute, and Second.  Literal begins with "@" symbol in forms:  @YYYY-MM-DD, or @HH:MM:SS, or combined @YYYY-MM-DD HH:MM:SS.
+- Money.  Stored as integer with four digits below lowest denomination (e.g. the penny).  Literal begins with "$" symbol with decimal after base denomination (e.g. dollar).  The currency is USD by default but may be explicitly specified suffixed to value (e.g. $19.95 USD).
+- List.  A collection of values indexed numerically.  Literal representation is
+in the form [ value1, valu2, .. ]
+- Record.  A collection of values indexed by name.  Literal form is myvar =
+{ attrib1:value1, attrib2:value2, .. }
+- function.  A sequence of instruction tokens with associated record as its
+data scope.
+- trigger.  A sequence of condition tokens with associated data scope and associated function.
+
+
+### Text
+
+Text is UTF-8 characters and includes the following useful methods:
+
+- .length()
+- .slice( index, length )
+- .splice( index, length, value )
+- .uppercase()
+- .lowercase()
+- .titlecase()
+- .escaped()
+- .unescaped()
+- .form( record, opener, closer )  -- this interpolates values into the string;
+
+by default, the record would be the current variable scope, the opener is "{"
+and the closer is "}".
+
+Similar to a list, the characters of a text value may be retrieved by numerical
+index.  For example:  `"Hello".slice(2,2)` provides "ll".
+
+
+### Money
+
+```mbl
+$.USD.base = "dollar"
+$.USD.lowest = "cent"
+$.USD.dollar = 100
+```
+
+USD is the default currency (assumed if not specified).  It is defined above.
+The base currency is what is meant when you write `$1 USD`. And $1 is equal to
+100 cents.  In memory, for calculation purposes, the precision stored is to
+four digits lower than the lowest denomination.
+
+Exchange rates in other currencies may be specified in terms of USD's lowest
+denomination.  The following is an example for the Korean WON.
+
+```mbl
+$.WON.base = "cheon"
+$.WON.lowest = "shib"
+$.WON.cheon = 100
+$.WON.exchange = 100
+```
+
+In the above, 100 shib WON translate to 1 cent USD.
+
+### Time
+
+Time is held as a collection of the following attributes.
+
+- year
+- month
+- day
+- hour
+- minute
+- second
+- milliscond
+
+Not all need be specified but when adding or subtracting time, the attributes
+not specified are ignored.
+
+```mbl
+birth_date = @1970-07-29
+birth_date = 1970 years + 7 months + 29 days
+```
+
+The above illustrates two ways of specifying the same date.  The first is the
+short form and the second way is actually just adding durations of time
+together.
+
+In arithmatic, no sign prefixing a time attributes implies addition while a "-"
+sign would indicate subtraction.
+
+The `new_date = @2025-05-01 + 7 days + 8 hours` code would equate to
+`@2025-05-08 08:00:00.0`.
+
+As for days of the week, there is the following syntax:
+
+```mdl
+meeting_date = thursday before @2025-08-15
+meeting_date = tuesday after @2025-08-15
+```
+
+### List
+
+A list is numerically indexed (integers), dynamically sized, and may hold
+different values.
+
+The following assigns a new list to the mylist variable:
+`mylist = ["text",3.14,@2025-03-06,$13.95 USD, [1,2,3], {name:"joe",
+age:54}]`
+
+Note that, although tab indentation after a colon is used to identify a code
+block in MBL, the spacing, newlines, and tabs within an explicit list are
+separate from this and may be used free-form.
+
+Extracting the second item, 3.14, is done by writing `mylist[1]` because
+indexes are zero-based.
+
+Useful methods of a list include:
+
+- .length()
+- .slice( index, length )
+- .splice( index, length, value(s) )
+
+### Record
+
+A record is name indexed, dynamically sized, and may hold different values.
+The name used for each attribute within a record may be any text but following
+variable name conventions allows the use of dot notation when referencing them.
+
+```mbl
+person = {
+    name:"Joe",
+    age:34
+    "full-name":"Joe Broe"
+}
+```
+
+In the above, we don't need quotes around the attribute names "name" or "age"
+but we do around "full-name" because that name does not comply with the
+variable name convention.  Note that, there is no possibility of keyword
+conflicts in the definition of a record so using keywords here is allowed.
+
+Referencing an attribute may be specified in the form `person["name"]` or
+`person.name` or `person["full-name"] but not `person.full-name`.  This is
+similar to Javascript.
+
+Note that, although tab indentation after a colon is used to identify a code
+block in MBL, the spacing, newlines, and tabs within an explicit record are
+separate from this and may be used free-form.
+
+Also, a new record may inherit a base record by prefixing it with a base
+record, such as this: `person = animal { name:"joe", age:34 }`.  In this case,
+whatever the record "animal" is is merely extended in the new record "person".
+The person is an animal.
+
+
+### Function
+
+A function is a code-block, optionally with a parameter list, that when
+called, has a record associated with it to be its local data scope.  If the
+function is not given an explicit return value then the entire record is
+returned with it.
+
+```mbl
+calc( a, operation, b ):
+    Consider operation:
+        When "+": return a + b
+        When "-": return a - b
+        Otherwise: return unknown("{operation} unsupported".form() )
+```
+
+For a function inside a function to reach the data scope of the super-function,
+there is the "super" keyword.
+
+For a function to be extended by another function, merely prefix the base
+function to the new function.  Let's say you have funciton "mybase" that you
+want to use as a base-class for an "mynew" function:
+
+```mbl
+mybase( a, b ):
+    # do stuff #
+
+mybase mynew( a, b, c ):
+    super(a,b)
+    # do more stuff #
+
+### Trigger
+
+A trigger is a function that, instead of parameters, has a condition.  It is
+also prefixed with the "when" keyword, acting as if it were a base function.
+
+```mbl
+when( x > 100 ):
+    super.x = 0
+```
+
+Each variable in the condition is watched and the condition re-evaluated when
+one or more are assigned new different values.  MBL operates in moments of a
+third of a second.  After all assignments are made in a given moment, when
+conditions are then checked, if any of its values have changed.
+
