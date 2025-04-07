@@ -1,11 +1,152 @@
 # Modern Business Language
 
+## Overview
+
+MBL is designed to be a modern, business-focused programming language that emphasizes readability, maintainability, and practical business operations. It supports high-level abstractions while maintaining precise control over business logic and data handling.
+
+## Program Structure
+
+All MBL code exists within a "program" function, which serves as the entry point for the application. External resources are accessed through the "computer" record, which provides a unified interface to system capabilities.
+
+```mbl
+program():
+    # Main program code here #
+    computer.write("Hello, World!")
+    result = process_data()
+    if result.reason:
+        computer.write("Error: " + result.reason)
+```
+
+### Computer Record
+
+The computer record provides access to system resources and capabilities:
+
+```mbl
+computer = {
+    # File Operations
+    read_file(path): returns text or unknown
+    write_file(path, content): returns nothing or unknown
+    delete_file(path): returns nothing or unknown
+    
+    # Console Operations
+    write(value): writes to standard output
+    read(): reads from standard input
+    
+    # System Information
+    time(): returns current time
+    date(): returns current date
+    environment(): returns environment variables
+    
+    # Network Operations
+    http_get(url): returns response or unknown
+    http_post(url, data): returns response or unknown
+    
+    # Database Operations
+    db_connect(connection_string): returns connection or unknown
+    db_query(connection, query): returns result or unknown
+    db_execute(connection, command): returns nothing or unknown
+}
+```
+
+## Error Handling
+
+MBL uses a unified error handling approach through the Unknown type, which implements ternary logic. Any operation that can fail returns either the expected value, Nothing, or an Unknown value.
+
+### Unknown Type
+
+The Unknown type is used to represent both errors and undefined states in ternary logic. It has the following properties:
+- .reason: Text description of why the value is unknown
+- .possibles: List of possible values that could resolve the unknown
+
+In ternary logic operations:
+- True AND Unknown = Unknown
+- False AND Unknown = False
+- True OR Unknown = True
+- False OR Unknown = Unknown
+- NOT Unknown = Unknown
+
+Example ternary logic:
+```mbl
+function validate_age(age):
+    if age < 0:
+        return false
+    if age > 150:
+        return unknown("Age exceeds reasonable maximum")
+    return true
+
+# Ternary logic examples
+result1 = validate_age(25) AND validate_age(200)  # Returns Unknown
+result2 = validate_age(-1) OR validate_age(200)   # Returns False
+result3 = validate_age(25) OR validate_age(200)   # Returns True
+result4 = NOT validate_age(200)                   # Returns Unknown
+```
+
+When an Unknown value is used in a condition:
+```mbl
+if validate_age(200):
+    # This block won't execute because Unknown is not True
+    computer.write("Valid age")
+elif validate_age(200).reason:
+    # This block will execute
+    computer.write("Age validation failed: " + validate_age(200).reason)
+else:
+    # This block won't execute because Unknown is not False
+    computer.write("Invalid age")
+```
+
+Example error handling with ternary logic:
+```mbl
+function divide(a, b):
+    if b == 0:
+        return unknown("Division by zero")
+    return a / b
+
+result = divide(10, 0)
+if result.reason:
+    computer.write("Error: " + result.reason)
+else:
+    computer.write("Result: " + result)
+```
+
+### Error Propagation
+
+When an operation returns an Unknown value, it should be handled by the caller. If not handled, the Unknown value propagates up the call stack until it reaches the program function or is explicitly handled.
+
+Example with ternary logic:
+```mbl
+function process_data():
+    data = computer.read_file("input.txt")
+    if data.reason:
+        return unknown("Failed to read input file: " + data.reason)
+    
+    result = parse_data(data)
+    if result.reason:
+        return unknown("Failed to parse data: " + result.reason)
+    
+    return result
+
+program():
+    result = process_data()
+    if result.reason:
+        computer.write("Error: " + result.reason)
+    else:
+        computer.write("Success: " + result)
+```
 
 ## Comments
 
 A comment is initiated with any number of adjacent "#" symbols (unless in a string literal) and ends with the same number of adjacent "#" symbols.
 Consequently, comments may be recursive.
 
+Example:
+```mbl
+# Single line comment #
+## Multi-line
+comment ##
+### Nested
+# comment
+inside ###
+```
 
 ## Data Value Types
 
@@ -207,7 +348,387 @@ when( x > 100 ):
 ```
 
 Each variable in the condition is watched and the condition re-evaluated when
-one or more are assigned new different values.  MBL operates in moments of a
-third of a second.  After all assignments are made in a given moment, when
-conditions are then checked, if any of its values have changed.
+one or more are assigned new different values. MBL operates in moments of a
+third of a second. The execution model works as follows:
+
+1. All regular code executes normally, making variable assignments as needed
+2. The system tracks which variables are referenced in trigger conditions
+3. When a watched variable is assigned a new value, it's marked as "changed" for the current moment
+4. At the end of each moment (1/3 second time slice), the system:
+   - Collects all triggers whose watched variables changed during that moment
+   - Evaluates each affected trigger's condition exactly once
+   - Executes trigger actions for conditions that evaluate to true
+   - Resets all "changed" flags for the next moment
+
+This batched evaluation ensures triggers see a consistent state reflecting all
+changes made in the moment, rather than intermediate states. It also prevents
+cascading or thrashing behavior that could occur if triggers were evaluated
+immediately upon every variable change.
+
+### Constraint
+
+A constraint is similar to a trigger but evaluates immediately when a variable changes rather than at the end of a moment. It is used to enforce business rules and data validation. Unlike triggers, which are used for reactions to data changes, constraints are used to prevent invalid data from being stored in the first place.
+
+Constraints include an optional healing action that can automatically correct invalid data, rather than simply rejecting it.
+
+```mbl
+constrain( x < 20 ):
+    # If x is assigned a value >= 20, the assignment will fail
+    # The constraint validation happens immediately on assignment
+    
+constrain( x < 20 ):
+    # This constraint includes a healing action
+    x = 20  # If x would exceed 20, cap it at 20 instead
+```
+
+The execution model for constraints works as follows:
+
+1. The system tracks which variables are referenced in constraint conditions
+2. When a watched variable is assigned a new value:
+   - All constraints that reference this variable are immediately evaluated
+   - If any constraint evaluates to false (condition violated):
+     - If the constraint has a healing action, it's executed to try to fix the data
+     - If healing succeeds (constraint now evaluates to true), the assignment proceeds
+     - If healing fails or there is no healing action, the assignment is rejected
+   - If all constraints pass, the assignment proceeds normally
+
+Constraints provide immediate validation and self-healing capabilities, complementing the moment-based trigger system for a complete reactive programming model.
+
+## Modules and Packages
+
+### Module Definition
+
+```mbl
+module "my_module":
+    # module contents #
+    export function public_function():
+        # function code #
+    
+    private function internal_function():
+        # function code #
+```
+
+### Package Structure
+
+```
+my_package/
+    package.mbl      # Package definition and exports
+    module1.mbl      # Individual modules
+    module2.mbl
+    tests/           # Test files
+    docs/            # Documentation
+```
+
+### Import System
+
+```mbl
+import "package_name"
+import "package_name" as alias
+import { specific_item } from "package_name"
+```
+
+## Standard Library
+
+### Core Functions
+
+- type(): Get type of value
+- clone(): Deep copy of value
+- serialize(): Convert to string representation
+- deserialize(): Convert from string representation
+
+### Business Operations
+
+- format_currency(): Format money values
+- calculate_tax(): Tax calculations
+- date_diff(): Calculate time differences
+- validate_email(): Email validation
+- generate_invoice(): Invoice generation
+
+### Data Processing
+
+- filter(): Filter collections
+- map(): Transform collections
+- reduce(): Aggregate collections
+- sort(): Sort collections
+- group(): Group by key
+
+### File Operations
+
+```mbl
+file = open("path/to/file", "mode")
+file.read()
+file.write(content)
+file.close()
+```
+
+## Best Practices
+
+### Naming Conventions
+
+- Variables: camelCase
+- Functions: camelCase
+- Types: PascalCase
+- Constants: UPPER_SNAKE_CASE
+- Private members: _camelCase
+
+### Code Organization
+
+- One concept per file
+- Clear module boundaries
+- Consistent indentation (4 spaces)
+- Maximum line length: 100 characters
+- Clear function and variable names
+
+### Documentation
+
+- Module-level documentation
+- Function documentation with parameters and return values
+- Examples in documentation
+- Version history
+- Dependencies
+
+## Security
+
+### Data Protection
+
+- Automatic encryption of sensitive data
+- Secure storage of credentials
+- Input validation
+- Output sanitization
+
+### Access Control
+
+```mbl
+role "admin":
+    can: ["read", "write", "delete"]
+    cannot: ["modify_permissions"]
+
+role "user":
+    can: ["read", "write"]
+    cannot: ["delete", "modify_permissions"]
+```
+
+## Performance Considerations
+
+### Optimization Features
+
+- Lazy evaluation
+- Caching mechanisms
+- Parallel processing support
+- Memory management
+- Resource pooling
+
+### Monitoring
+
+```mbl
+monitor "performance_metric":
+    when(metric > threshold):
+        alert("Performance issue detected")
+        log(metric_details)
+```
+
+## Development Tools
+
+### REPL Environment
+
+MBL includes an interactive Read-Eval-Print Loop (REPL) environment for rapid development and testing. The REPL allows developers to interactively explore language features, test code snippets, and experiment with the reactive programming model's trigger and constraint systems.
+
+```
+$ mbl-repl
+Modern Business Language (MBL) REPL
+Version 0.1.0
+Type 'help' for assistance, 'exit' to quit
+
+mbl> x = 5
+Command executed successfully.
+
+mbl> y = x * 2
+Command executed successfully.
+
+mbl> when x > 10:
+...     y = "x is greater than 10"
+... end
+Command executed successfully.
+
+mbl> x = 15
+Command executed successfully.
+=== End of moment 0 ===
+Evaluating trigger 'x_changed' at moment 0
+x = 15 at moment 0
+```
+
+REPL special commands:
+
+- `exit`, `quit` - Exit the REPL
+- `help` - Show the help message
+- `clear` - Clear the screen
+- `history` - Show command history
+- `!<num>` - Execute command from history by number
+- `reset` - Reset the runtime environment
+- `vars` - Show all defined variables
+- `triggers` - Show all defined triggers
+- `constraints` - Show all defined constraints
+
+The REPL supports multi-line input with automatic indentation tracking, similar to Python's REPL, making it easier to define complex structures like triggers and constraints.
+
+## Testing
+
+### Unit Tests
+
+```mbl
+test "function_name":
+    setup:
+        # test setup #
+    test "should do something":
+        # test code #
+        assert result == expected
+    teardown:
+        # cleanup #
+```
+
+### Integration Tests
+
+```mbl
+integration "feature_name":
+    setup:
+        # integration setup #
+    test "should work with other components":
+        # integration test code #
+    teardown:
+        # cleanup #
+```
+
+## Deployment
+
+### Configuration
+
+```mbl
+config "production":
+    database_url = "postgresql://..."
+    api_key = env("API_KEY")
+    debug = false
+```
+
+### Environment Management
+
+```mbl
+environment "development":
+    debug = true
+    log_level = "debug"
+    mock_external_services = true
+```
+
+## Version Control Integration
+
+### Git Integration
+
+```mbl
+git:
+    branch = current_branch()
+    commit = last_commit()
+    status = repository_status()
+```
+
+## Internationalization
+
+### Language Support
+
+```mbl
+i18n:
+    locale = "en_US"
+    currency = "USD"
+    date_format = "MM/DD/YYYY"
+    number_format = "#,##0.00"
+```
+
+## Logging
+
+### Log Levels
+
+```mbl
+log:
+    debug("Detailed information")
+    info("General information")
+    warning("Warning message")
+    error("Error message")
+    critical("Critical error")
+```
+
+## Database Integration
+
+### Query Building
+
+```mbl
+query = select("users")
+    .where("age > ?", 18)
+    .order_by("name")
+    .limit(10)
+```
+
+### Transaction Management
+
+```mbl
+transaction:
+    begin()
+    try:
+        # database operations #
+        commit()
+    catch error:
+        rollback()
+        throw error
+```
+
+### Unknown Type Operations
+
+The Unknown type interacts with other operations in predictable ways:
+
+#### Arithmetic Operations
+```mbl
+# Arithmetic with Unknown
+5 + unknown("Missing value") = unknown("Cannot add to unknown value")
+unknown("Missing value") * 3 = unknown("Cannot multiply unknown value")
+```
+
+#### Comparison Operations
+```mbl
+# Comparisons with Unknown
+5 > unknown("Missing value") = unknown("Cannot compare with unknown value")
+unknown("Missing value") == 5 = unknown("Cannot compare unknown value")
+unknown("Missing value") == unknown("Missing value") = unknown("Cannot compare unknown values")
+```
+
+#### List Operations
+```mbl
+# List operations with Unknown
+my_list = [1, 2, unknown("Missing value"), 4]
+my_list[2] = unknown("Cannot access unknown index")
+my_list.length() = 4  # Unknown values are counted in length
+```
+
+#### Record Operations
+```mbl
+# Record operations with Unknown
+person = {
+    name: "John",
+    age: unknown("Age not provided")
+}
+person.age = unknown("Cannot access unknown field")
+person["age"] = unknown("Cannot access unknown field")
+```
+
+#### Function Calls
+```mbl
+# Function calls with Unknown
+function greet(name):
+    return "Hello, " + name
+
+greeting = greet(unknown("Missing name"))  # Returns unknown("Cannot concatenate with unknown value")
+```
+
+#### Type Checking
+```mbl
+# Type checking with Unknown
+type(unknown("Missing value")) = "unknown"
+is_unknown(unknown("Missing value")) = true
+```
 
