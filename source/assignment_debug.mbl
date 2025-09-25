@@ -1,0 +1,10 @@
+# Assignment Debug Test
+
+counter = 1
+program.write("Initial counter: " + counter)
+
+counter = counter + 1
+program.write("After increment: " + counter)
+
+counter = counter + 1
+program.write("After second increment: " + counter)

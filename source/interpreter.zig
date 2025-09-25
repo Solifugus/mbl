@@ -13,6 +13,8 @@ pub const InterpreterError = error{
     DivisionByZero,
     OutOfMemory,
     GotoExecuted, // Special error to signal goto was executed
+    BreakExecuted, // Special error to signal break was executed
+    ContinueExecuted, // Special error to signal continue was executed
 };
 
 pub const Interpreter = struct {
@@ -177,8 +179,19 @@ pub const Interpreter = struct {
             .if_statement => |if_stmt| {
                 try self.executeIfStatement(if_stmt);
             },
+            .while_statement => |while_stmt| {
+                try self.executeWhileStatement(while_stmt);
+            },
             .for_statement => |for_stmt| {
                 try self.executeForStatement(for_stmt);
+            },
+            .break_stmt => |_| {
+                std.log.info("🔄 Break statement executed", .{});
+                return InterpreterError.BreakExecuted;
+            },
+            .continue_stmt => |_| {
+                std.log.info("🔄 Continue statement executed", .{});
+                return InterpreterError.ContinueExecuted;
             },
             .label => |label| {
                 // Labels are no-ops during execution (handled in label discovery phase)
@@ -1148,6 +1161,56 @@ pub const Interpreter = struct {
         }
     }
 
+    fn executeWhileStatement(self: *Interpreter, while_stmt: parser.WhileStatement) anyerror!void {
+
+        var iteration_count: usize = 0;
+        const max_iterations: usize = 10000; // Prevent infinite loops
+
+        while (true) {
+            // Check for infinite loop protection
+            iteration_count += 1;
+            if (iteration_count > max_iterations) {
+                std.log.err("❌ While loop exceeded maximum iterations ({})", .{max_iterations});
+                return InterpreterError.TypeError; // Could add specific InfiniteLoopError
+            }
+
+            // Evaluate the condition
+            const condition_value = try self.evaluateExpression(while_stmt.condition);
+            const condition_truthy = self.isTruthy(condition_value);
+
+            if (!condition_truthy) {
+                std.log.info("🔄 While condition is false, exiting loop", .{});
+                break;
+            }
+
+            std.log.info("🔄 While iteration {}, condition is true", .{iteration_count});
+
+            // Execute the loop body (no local scope needed for while loops)
+            // Unlike for loops, while loops should work with existing variables
+            for (while_stmt.body) |stmt| {
+                if (self.executeStatement(stmt)) |_| {
+                    // Statement executed normally
+                } else |err| switch (err) {
+                    InterpreterError.BreakExecuted => {
+                        std.log.info("🔄 Break encountered, exiting while loop", .{});
+                        return; // Exit the while loop entirely
+                    },
+                    InterpreterError.ContinueExecuted => {
+                        std.log.info("🔄 Continue encountered, skipping to next while iteration", .{});
+                        break; // Skip the rest of the loop body statements, continue with next iteration
+                    },
+                    InterpreterError.GotoExecuted => {
+                        // Propagate the goto up to the main execution loop
+                        return InterpreterError.GotoExecuted;
+                    },
+                    else => return err,
+                }
+            }
+        }
+
+        std.log.info("✓ While loop completed after {} iterations", .{iteration_count - 1});
+    }
+
     fn executeForStatement(self: *Interpreter, for_stmt: parser.ForStatement) anyerror!void {
         std.log.info("🔄 Executing for loop with variable '{s}'", .{for_stmt.variable});
 
@@ -1179,6 +1242,14 @@ pub const Interpreter = struct {
                         if (self.executeStatement(stmt)) |_| {
                             // Statement executed normally
                         } else |err| switch (err) {
+                            InterpreterError.BreakExecuted => {
+                                std.log.info("🔄 Break encountered, exiting for loop", .{});
+                                return; // Exit the for loop entirely
+                            },
+                            InterpreterError.ContinueExecuted => {
+                                std.log.info("🔄 Continue encountered, skipping to next for iteration", .{});
+                                break; // Skip the rest of the loop body statements, continue with next iteration
+                            },
                             InterpreterError.GotoExecuted => {
                                 // Propagate the goto up to the main execution loop
                                 return InterpreterError.GotoExecuted;
@@ -1215,6 +1286,14 @@ pub const Interpreter = struct {
                         if (self.executeStatement(stmt)) |_| {
                             // Statement executed normally
                         } else |err| switch (err) {
+                            InterpreterError.BreakExecuted => {
+                                std.log.info("🔄 Break encountered, exiting for loop", .{});
+                                return; // Exit the for loop entirely
+                            },
+                            InterpreterError.ContinueExecuted => {
+                                std.log.info("🔄 Continue encountered, skipping to next for iteration", .{});
+                                break; // Skip the rest of the loop body statements, continue with next iteration
+                            },
                             InterpreterError.GotoExecuted => {
                                 // Propagate the goto up to the main execution loop
                                 return InterpreterError.GotoExecuted;

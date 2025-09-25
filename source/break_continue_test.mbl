@@ -1,0 +1,25 @@
+# Break and Continue Test - MBL v0.6.0
+
+program.write("=== Break Test ===")
+x = 1
+while x < 10:
+	program.write("x = " + x)
+	if x == 3 then
+		program.write("Breaking at x=3")
+		break
+	end
+	x = x + 1
+
+program.write("After while loop, x = " + x)
+
+program.write("=== Continue Test ===")
+i = 0
+while i < 5:
+	i = i + 1
+	if i == 3 then
+		program.write("Skipping i=3")
+		continue
+	end
+	program.write("Processing i = " + i)
+
+program.write("=== Test Complete ===")

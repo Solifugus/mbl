@@ -1,0 +1,5 @@
+x = 1
+while x < 3:
+    program.write("x is " + x)
+    x = x + 1
+program.write("Final x: " + x)

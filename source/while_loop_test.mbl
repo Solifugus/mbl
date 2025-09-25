@@ -1,0 +1,14 @@
+# While Loop Test - MBL v0.6.0
+
+program.write("=== While Loop Test ===")
+
+# Test basic while loop with counter
+counter = 1
+program.write("Starting while loop with counter = " + counter)
+
+while counter <= 3:
+    program.write("  Iteration " + counter)
+    counter = counter + 1
+
+program.write("Final counter value: " + counter)
+program.write("=== Test Complete ===")

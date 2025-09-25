@@ -7,7 +7,27 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    const source = "for num in numbers:\n\tprogram.write(num)";
+    // Get filename from command line arguments
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
+
+    if (args.len != 2) {
+        std.debug.print("Usage: debug_tokens <filename>\n", .{});
+        return;
+    }
+
+    // Read the file
+    const filename = args[1];
+    const file = std.fs.cwd().openFile(filename, .{}) catch |err| {
+        std.debug.print("Error opening file '{s}': {s}\n", .{filename, @errorName(err)});
+        return;
+    };
+    defer file.close();
+
+    const file_size = try file.getEndPos();
+    const source = try allocator.alloc(u8, file_size);
+    defer allocator.free(source);
+    _ = try file.readAll(source);
 
     std.debug.print("Source ({d} chars): {s}\n", .{source.len, source});
     std.debug.print("Characters: ", .{});

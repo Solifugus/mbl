@@ -15,6 +15,8 @@ pub const Statement = union(enum) {
     if_statement: IfStatement,
     while_statement: WhileStatement,
     for_statement: ForStatement,
+    break_stmt: BreakStatement,
+    continue_stmt: ContinueStatement,
     return_statement: ReturnStatement,
     activator_declaration: ActivatorDeclaration,
 
@@ -28,6 +30,8 @@ pub const Statement = union(enum) {
             .if_statement => |*stmt| stmt.deinit(allocator),
             .while_statement => |*stmt| stmt.deinit(allocator),
             .for_statement => |*stmt| stmt.deinit(allocator),
+            .break_stmt => |*stmt| stmt.deinit(allocator),
+            .continue_stmt => |*stmt| stmt.deinit(allocator),
             .return_statement => |*stmt| stmt.deinit(allocator),
             .activator_declaration => |*stmt| stmt.deinit(allocator),
         }
@@ -168,6 +172,22 @@ pub const ForStatement = struct {
             stmt.deinit(allocator);
         }
         allocator.free(self.body);
+    }
+};
+
+pub const BreakStatement = struct {
+    pub fn deinit(self: *BreakStatement, allocator: std.mem.Allocator) void {
+        _ = self;
+        _ = allocator;
+        // Nothing to deallocate
+    }
+};
+
+pub const ContinueStatement = struct {
+    pub fn deinit(self: *ContinueStatement, allocator: std.mem.Allocator) void {
+        _ = self;
+        _ = allocator;
+        // Nothing to deallocate
     }
 };
 
@@ -480,6 +500,12 @@ pub const Parser = struct {
         if (self.match(.for_kw)) {
             return Statement{ .for_statement = try self.parseForStatement() };
         }
+        if (self.match(.break_kw)) {
+            return Statement{ .break_stmt = try self.parseBreakStatement() };
+        }
+        if (self.match(.continue_kw)) {
+            return Statement{ .continue_stmt = try self.parseContinueStatement() };
+        }
         if (self.match(.return_kw)) {
             return Statement{ .return_statement = try self.parseReturnStatement() };
         }
@@ -584,6 +610,19 @@ pub const Parser = struct {
             while (!self.check(.else_kw) and !self.check(.end_kw) and !self.isAtEnd()) {
                 const current_indent = self.countIndentation();
 
+                // Check if we have an 'end' keyword after the indentation tokens
+                var pos = self.current;
+                while (pos < self.tokens.len and self.tokens[pos].type == .indent) {
+                    pos += 1;
+                }
+                if (pos < self.tokens.len and self.tokens[pos].type == .end_kw) {
+                    // Advance past all the INDENT tokens to position at the 'end' token
+                    while (self.check(.indent)) {
+                        _ = self.advance();
+                    }
+                    break; // Found 'end' after indentation, stop parsing statements
+                }
+
                 // If indentation is less than expected, we've reached the end of this block
                 if (current_indent < expected_indent) {
                     break;
@@ -643,7 +682,7 @@ pub const Parser = struct {
         const condition = try self.parseExpression();
         _ = try self.consume(.colon, "Expected ':' after while condition");
 
-        const body = try self.parseBlock();
+        const body = try self.parseStatementBlock();
 
         return WhileStatement{
             .condition = condition,
@@ -668,6 +707,18 @@ pub const Parser = struct {
             .iterable = iterable,
             .body = body,
         };
+    }
+
+    fn parseBreakStatement(self: *Parser) ParseError!BreakStatement {
+        // break keyword was already consumed in parseStatement
+        _ = self; // Suppress unused parameter warning
+        return BreakStatement{};
+    }
+
+    fn parseContinueStatement(self: *Parser) ParseError!ContinueStatement {
+        // continue keyword was already consumed in parseStatement
+        _ = self; // Suppress unused parameter warning
+        return ContinueStatement{};
     }
 
     fn parseReturnStatement(self: *Parser) ParseError!ReturnStatement {
