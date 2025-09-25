@@ -1,6 +1,10 @@
+# Simple function test
 program.write("Before function")
 
-testFunction():
-	program.write("Inside function")
+calculate_sum(a, b):
+	result = a + b
+	return result
 
 program.write("After function")
+sum = calculate_sum(10, 20)
+program.write("Sum: " + sum)

@@ -1,0 +1,36 @@
+# MBL v0.7.0 Function Test - Basic functionality
+
+program.write("=== MBL Function Test v0.7.0 ===")
+
+# Test 1: Simple function with explicit return
+calculate_sum(a, b):
+    result = a + b
+    return result
+
+sum = calculate_sum(10, 20)
+program.write("Sum test: " + sum)
+
+# Test 2: Function with default parameters
+greet(name, greeting = "Hello"):
+    message = greeting + " " + name
+    return message
+
+msg1 = greet("Alice")
+program.write("Greet default: " + msg1)
+
+msg2 = greet("Bob", "Hi")
+program.write("Greet custom: " + msg2)
+
+# Test 3: Function without explicit return (returns data scope)
+build_report(title):
+    report_title = title
+    item_count = 5
+    status = "completed"
+    # Implicit return of data scope record
+
+report = build_report("Monthly Sales")
+program.write("Report created: " + report.report_title)
+program.write("Item count: " + report.item_count)
+program.write("Status: " + report.status)
+
+program.write("=== Function Test Complete ===")

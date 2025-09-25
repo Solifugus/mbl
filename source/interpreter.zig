@@ -15,6 +15,7 @@ pub const InterpreterError = error{
     GotoExecuted, // Special error to signal goto was executed
     BreakExecuted, // Special error to signal break was executed
     ContinueExecuted, // Special error to signal continue was executed
+    ReturnExecuted, // Special error to signal return was executed
 };
 
 pub const Interpreter = struct {
@@ -24,6 +25,8 @@ pub const Interpreter = struct {
     labels: std.HashMap([]const u8, usize, std.hash_map.StringContext, std.hash_map.default_max_load_percentage),
     goto_target: ?[]const u8, // Track the target of a goto that was executed
     scope_stack: std.ArrayList(*memory.Record), // Stack of local scopes (deepest first)
+    functions: std.HashMap([]const u8, parser.FunctionDeclaration, std.hash_map.StringContext, std.hash_map.default_max_load_percentage), // Function registry
+    return_value: ?MBLValue, // Store return value from functions
 
     pub fn init(allocator: std.mem.Allocator, mem: *Memory) Interpreter {
         return Interpreter{
@@ -33,6 +36,8 @@ pub const Interpreter = struct {
             .labels = std.HashMap([]const u8, usize, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(allocator),
             .goto_target = null,
             .scope_stack = std.ArrayList(*memory.Record).init(allocator),
+            .functions = std.HashMap([]const u8, parser.FunctionDeclaration, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(allocator),
+            .return_value = null,
         };
     }
 
@@ -40,6 +45,14 @@ pub const Interpreter = struct {
         self.output.deinit();
         self.labels.deinit();
         self.scope_stack.deinit();
+
+        // Clean up registered functions
+        var func_iterator = self.functions.iterator();
+        while (func_iterator.next()) |entry| {
+            var func_decl = entry.value_ptr.*;
+            func_decl.deinit(self.allocator);
+        }
+        self.functions.deinit();
     }
 
     // Scope management methods
@@ -158,6 +171,11 @@ pub const Interpreter = struct {
                             return InterpreterError.TypeError;
                         }
                     },
+                    InterpreterError.ReturnExecuted => {
+                        // Return statement executed outside of function context
+                        std.log.err("❌ Return statement can only be used inside functions", .{});
+                        return InterpreterError.TypeError;
+                    },
                     else => return err,
                 }
             }
@@ -202,6 +220,12 @@ pub const Interpreter = struct {
                 self.goto_target = goto_stmt.target;
                 std.log.info("🔄 GOTO '{s}' executed from nested statement", .{goto_stmt.target});
                 return InterpreterError.GotoExecuted;
+            },
+            .function_declaration => |func_decl| {
+                try self.registerFunction(func_decl);
+            },
+            .return_statement => |return_stmt| {
+                try self.executeReturnStatement(return_stmt);
             },
             else => {
                 std.log.warn("Statement type {s} not yet supported", .{@tagName(stmt)});
@@ -556,6 +580,12 @@ pub const Interpreter = struct {
                     return try self.handleProgramWrite(call_expr.arguments);
                 }
             }
+        }
+
+        // Handle user-defined function calls
+        if (call_expr.callee.* == .identifier) {
+            const func_name = call_expr.callee.identifier.name;
+            return try self.callFunction(func_name, call_expr.arguments);
         }
 
         std.log.warn("  Function call not supported", .{});
@@ -1311,5 +1341,107 @@ pub const Interpreter = struct {
         }
 
         std.log.info("✓ For loop completed", .{});
+    }
+
+    // Function management methods
+    fn registerFunction(self: *Interpreter, func_decl: parser.FunctionDeclaration) !void {
+        std.log.info("🔧 Registering function '{s}' with {} parameters", .{func_decl.name, func_decl.parameters.len});
+
+        // Clone the function declaration for storage
+        const name_copy = try self.allocator.dupe(u8, func_decl.name);
+        var params_copy = try self.allocator.alloc(parser.Parameter, func_decl.parameters.len);
+        for (func_decl.parameters, 0..) |param, i| {
+            params_copy[i] = parser.Parameter{
+                .name = try self.allocator.dupe(u8, param.name),
+                .default_value = param.default_value, // Simple copy since Expression is a union
+            };
+        }
+
+        var body_copy = try self.allocator.alloc(parser.Statement, func_decl.body.len);
+        for (func_decl.body, 0..) |stmt, i| {
+            body_copy[i] = stmt; // Shallow copy for now - statements are immutable during execution
+        }
+
+        const func_copy = parser.FunctionDeclaration{
+            .name = name_copy,
+            .parameters = params_copy,
+            .body = body_copy,
+        };
+
+        try self.functions.put(func_decl.name, func_copy);
+        std.log.info("✅ Function '{s}' registered successfully", .{func_decl.name});
+    }
+
+    fn executeReturnStatement(self: *Interpreter, return_stmt: parser.ReturnStatement) !void {
+        if (return_stmt.value) |return_expr| {
+            // Explicit return with value
+            self.return_value = try self.evaluateExpression(return_expr);
+            std.log.info("🔄 Return statement executed with value", .{});
+        } else {
+            // Return without value (should return function's data scope)
+            self.return_value = null;
+            std.log.info("🔄 Return statement executed without value (will return data scope)", .{});
+        }
+        return InterpreterError.ReturnExecuted;
+    }
+
+    fn callFunction(self: *Interpreter, func_name: []const u8, arguments: []parser.Expression) anyerror!MBLValue {
+        // Look up function
+        const func_decl = self.functions.get(func_name) orelse {
+            std.log.err("❌ Function '{s}' not found", .{func_name});
+            return InterpreterError.TypeError;
+        };
+
+        std.log.info("📞 Calling function '{s}' with {} arguments", .{func_name, arguments.len});
+
+        // Create function's data scope (record for local variables)
+        var function_scope = memory.Record.init(self.allocator);
+        defer function_scope.deinit();
+
+        // Push function scope
+        try self.pushScope(&function_scope);
+        defer self.popScope();
+
+        // Bind parameters to arguments
+        for (func_decl.parameters, 0..) |param, i| {
+            const arg_value = if (i < arguments.len)
+                try self.evaluateExpression(arguments[i])
+            else if (param.default_value) |default_expr|
+                try self.evaluateExpression(default_expr)
+            else {
+                std.log.err("❌ Missing argument for parameter '{s}'", .{param.name});
+                return InterpreterError.TypeError;
+            };
+
+            try self.setVariable(param.name, arg_value);
+            std.log.info("📝 Bound parameter '{s}' to argument", .{param.name});
+        }
+
+        // Clear return value before executing function body
+        self.return_value = null;
+
+        // Execute function body
+        for (func_decl.body) |stmt| {
+            if (self.executeStatement(stmt)) |_| {
+                // Statement executed normally
+            } else |err| switch (err) {
+                InterpreterError.ReturnExecuted => {
+                    // Function returned explicitly
+                    break;
+                },
+                else => return err,
+            }
+        }
+
+        // Determine return value
+        if (self.return_value) |return_val| {
+            // Explicit return value
+            std.log.info("✅ Function '{s}' returned explicit value", .{func_name});
+            return return_val;
+        } else {
+            // Implicit return: return function's data scope (record)
+            std.log.info("✅ Function '{s}' returning data scope (record)", .{func_name});
+            return MBLValue{ .record = function_scope };
+        }
     }
 };
