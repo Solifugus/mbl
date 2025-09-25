@@ -167,7 +167,6 @@ pub const Interpreter = struct {
     }
 
     fn executeStatement(self: *Interpreter, stmt: Statement) !void {
-        std.log.info("🚀 Executing statement type: {s}", .{@tagName(stmt)});
         switch (stmt) {
             .assignment => |assignment| {
                 try self.executeAssignment(assignment);
@@ -195,14 +194,11 @@ pub const Interpreter = struct {
     }
 
     fn executeAssignment(self: *Interpreter, assignment: parser.Assignment) !void {
-        std.log.info("🎯 Executing assignment...", .{});
         const value = try self.evaluateExpression(assignment.value);
-        std.log.info("🎯 Value evaluated successfully", .{});
 
         switch (assignment.target) {
             .identifier => |identifier| {
                 const var_name = identifier.name;
-                std.log.info("🎯 Assigning to identifier: {s}", .{var_name});
                 try self.setVariable(var_name, value);
                 std.log.info("  Assigned {s}", .{var_name});
             },
@@ -672,7 +668,7 @@ pub const Interpreter = struct {
         };
     }
 
-    fn evaluatePropertyAccess(self: *Interpreter, prop_access: parser.PropertyAccess) !MBLValue {
+    fn evaluatePropertyAccess(self: *Interpreter, prop_access: parser.PropertyAccess) anyerror!MBLValue {
         // Handle scope resolution with 'program' and 'super' keywords
         if (prop_access.object.* == .identifier) {
             const obj_name = prop_access.object.identifier.name;

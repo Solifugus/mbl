@@ -7,7 +7,7 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    const source = "x = 5";
+    const source = "x = 5\nprogram.write(x)";
 
     std.debug.print("Source ({d} chars): {s}\n", .{source.len, source});
     std.debug.print("Characters: ", .{});
