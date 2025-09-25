@@ -50,6 +50,9 @@ pub const TokenType = enum {
     while_kw,       // while
     for_kw,         // for
     in_kw,          // in
+    break_kw,       // break
+    continue_kw,    // continue
+    to_kw,          // to (for ranges)
     return_kw,      // return
     goto_kw,        // goto
     true_kw,        // true
@@ -113,6 +116,9 @@ pub const TokenType = enum {
             .while_kw => "while",
             .for_kw => "for",
             .in_kw => "in",
+            .break_kw => "break",
+            .continue_kw => "continue",
+            .to_kw => "to",
             .return_kw => "return",
             .goto_kw => "goto",
             .true_kw => "true",
@@ -561,6 +567,9 @@ pub const Lexer = struct {
             .{ "while", .while_kw },
             .{ "for", .for_kw },
             .{ "in", .in_kw },
+            .{ "break", .break_kw },
+            .{ "continue", .continue_kw },
+            .{ "to", .to_kw },
             .{ "return", .return_kw },
             .{ "goto", .goto_kw },
             .{ "true", .true_kw },

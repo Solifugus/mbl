@@ -14,6 +14,7 @@ pub const Statement = union(enum) {
     goto_stmt: GotoStatement,
     if_statement: IfStatement,
     while_statement: WhileStatement,
+    for_statement: ForStatement,
     return_statement: ReturnStatement,
     activator_declaration: ActivatorDeclaration,
 
@@ -26,6 +27,7 @@ pub const Statement = union(enum) {
             .goto_stmt => |*stmt| stmt.deinit(allocator),
             .if_statement => |*stmt| stmt.deinit(allocator),
             .while_statement => |*stmt| stmt.deinit(allocator),
+            .for_statement => |*stmt| stmt.deinit(allocator),
             .return_statement => |*stmt| stmt.deinit(allocator),
             .activator_declaration => |*stmt| stmt.deinit(allocator),
         }
@@ -148,6 +150,20 @@ pub const WhileStatement = struct {
 
     pub fn deinit(self: *WhileStatement, allocator: std.mem.Allocator) void {
         self.condition.deinit(allocator);
+        for (self.body) |*stmt| {
+            stmt.deinit(allocator);
+        }
+        allocator.free(self.body);
+    }
+};
+
+pub const ForStatement = struct {
+    variable: []const u8,        // Loop variable name (e.g., "item")
+    iterable: Expression,        // What we're iterating over (e.g., "items")
+    body: []Statement,          // Loop body statements
+    pub fn deinit(self: *ForStatement, allocator: std.mem.Allocator) void {
+        allocator.free(self.variable);
+        self.iterable.deinit(allocator);
         for (self.body) |*stmt| {
             stmt.deinit(allocator);
         }
@@ -461,6 +477,9 @@ pub const Parser = struct {
         if (self.match(.while_kw)) {
             return Statement{ .while_statement = try self.parseWhileStatement() };
         }
+        if (self.match(.for_kw)) {
+            return Statement{ .for_statement = try self.parseForStatement() };
+        }
         if (self.match(.return_kw)) {
             return Statement{ .return_statement = try self.parseReturnStatement() };
         }
@@ -628,6 +647,25 @@ pub const Parser = struct {
 
         return WhileStatement{
             .condition = condition,
+            .body = body,
+        };
+    }
+
+    fn parseForStatement(self: *Parser) ParseError!ForStatement {
+        // Parse: for variable in iterable:
+        const variable_token = try self.consume(.identifier, "Expected variable name after 'for'");
+        const variable_name = try self.allocator.dupe(u8, variable_token.lexeme);
+
+        _ = try self.consume(.in_kw, "Expected 'in' after for loop variable");
+
+        const iterable = try self.parseExpression();
+        _ = try self.consume(.colon, "Expected ':' after for loop iterable");
+
+        const body = try self.parseStatementBlock();
+
+        return ForStatement{
+            .variable = variable_name,
+            .iterable = iterable,
             .body = body,
         };
     }

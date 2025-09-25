@@ -177,6 +177,9 @@ pub const Interpreter = struct {
             .if_statement => |if_stmt| {
                 try self.executeIfStatement(if_stmt);
             },
+            .for_statement => |for_stmt| {
+                try self.executeForStatement(for_stmt);
+            },
             .label => |label| {
                 // Labels are no-ops during execution (handled in label discovery phase)
                 std.log.info("📍 Label '{s}' reached", .{label.name});
@@ -1143,5 +1146,91 @@ pub const Interpreter = struct {
                 std.log.info("🔀 If condition is false, no else branch", .{});
             }
         }
+    }
+
+    fn executeForStatement(self: *Interpreter, for_stmt: parser.ForStatement) anyerror!void {
+        std.log.info("🔄 Executing for loop with variable '{s}'", .{for_stmt.variable});
+
+        // Evaluate the iterable expression (e.g., a list, record, etc.)
+        const iterable_value = try self.evaluateExpression(for_stmt.iterable);
+
+        switch (iterable_value) {
+            .list => |list| {
+                std.log.info("🔄 Iterating over list with {} elements", .{list.len()});
+
+                // Iterate over each item in the list
+                for (0..list.len()) |i| {
+                    const item = list.get(i) orelse continue;
+
+                    // Create local scope for this iteration
+                    var local_scope = memory.Record.init(self.allocator);
+                    defer local_scope.deinit();
+
+                    // Set the loop variable in the local scope
+                    try local_scope.set(for_stmt.variable, item);
+
+                    try self.pushScope(&local_scope);
+                    defer self.popScope();
+
+                    std.log.info("🔄 For iteration {}, {s} = {s}", .{i, for_stmt.variable, @tagName(item)});
+
+                    // Execute the loop body
+                    for (for_stmt.body) |stmt| {
+                        if (self.executeStatement(stmt)) |_| {
+                            // Statement executed normally
+                        } else |err| switch (err) {
+                            InterpreterError.GotoExecuted => {
+                                // Propagate the goto up to the main execution loop
+                                return InterpreterError.GotoExecuted;
+                            },
+                            else => return err,
+                        }
+                    }
+                }
+            },
+            .record => |record| {
+                std.log.info("🔄 Iterating over record with {} fields", .{record.data.count()});
+
+                // Iterate over record keys (we can add value iteration later)
+                var iterator = record.data.iterator();
+                var i: usize = 0;
+                while (iterator.next()) |entry| {
+                    // Create MBLValue for the key (record iteration yields keys)
+                    const key_value = MBLValue{ .text = try memory.Text.init(self.allocator, entry.key_ptr.*) };
+
+                    // Create local scope for this iteration
+                    var local_scope = memory.Record.init(self.allocator);
+                    defer local_scope.deinit();
+
+                    // Set the loop variable to the key
+                    try local_scope.set(for_stmt.variable, key_value);
+
+                    try self.pushScope(&local_scope);
+                    defer self.popScope();
+
+                    std.log.info("🔄 For iteration {}, {s} = {s}", .{i, for_stmt.variable, entry.key_ptr.*});
+
+                    // Execute the loop body
+                    for (for_stmt.body) |stmt| {
+                        if (self.executeStatement(stmt)) |_| {
+                            // Statement executed normally
+                        } else |err| switch (err) {
+                            InterpreterError.GotoExecuted => {
+                                // Propagate the goto up to the main execution loop
+                                return InterpreterError.GotoExecuted;
+                            },
+                            else => return err,
+                        }
+                    }
+                    i += 1;
+                }
+            },
+            else => {
+                std.log.err("❌ Cannot iterate over {s} type", .{@tagName(iterable_value)});
+                return InterpreterError.TypeError;
+            }
+        }
+
+        std.log.info("✓ For loop completed", .{});
     }
 };
