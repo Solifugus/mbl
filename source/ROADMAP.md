@@ -25,14 +25,14 @@
 - [x] Unary operators: `-` for numbers, `not` for booleans
 - [x] Enhanced runtime error handling
 
-## 🏗️ v0.4.0 - Advanced Language Structure
-- [ ] Block statement parsing: Proper indentation-based syntax
-- [ ] Variable scoping: Local vs program-level variables
-- [ ] Nested scope management: Function and block-level scoping
-- [ ] Scope resolution: `super` and `program` keyword functionality
+## ✅ v0.4.0 - Advanced Language Structure (COMPLETE)
+- [x] Block statement parsing: Proper indentation-based syntax
+- [x] Variable scoping: Local vs program-level variables
+- [x] Nested scope management: Function and block-level scoping
+- [x] Scope resolution: `super` and `program` keyword functionality
 
-## ⏰ v0.5.0 - Time & Advanced Data Types
-- [ ] Time literals: `@2020-05-15`, `@14:30:00` support
+## 🚧 v0.5.0 - Time & Advanced Data Types (IN PROGRESS)
+- [x] Time literals: `@2020-05-15`, `@14:30:00` support
 - [ ] Time operations: Date arithmetic, formatting
 - [ ] Duration types: `3 days`, `2 hours 30 minutes`
 - [ ] Time comparisons: Before/after date logic
@@ -112,6 +112,6 @@ When starting a new version:
 9. [ ] Tag release: `git tag v0.x.0`
 10. [ ] Update ROADMAP.md with completed items
 
-## 🎯 Current Priority: v0.4.0
+## 🎯 Current Priority: v0.5.0
 
-The next version focuses on advanced language structure, implementing proper block statement parsing with indentation and comprehensive variable scoping.
+The next version focuses on time and advanced data types, implementing time literals, date arithmetic, record types, and list/array data structures.

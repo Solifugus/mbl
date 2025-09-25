@@ -1,0 +1,32 @@
+# Duration Types Test - MBL v0.5.0
+
+# Basic duration assignments
+work_day = 8 hours
+lunch_break = 30 minutes
+vacation = 7 days
+meeting = 90 seconds
+
+program.write("Work day: " + work_day)
+program.write("Lunch break: " + lunch_break)
+program.write("Vacation: " + vacation)
+program.write("Meeting: " + meeting)
+
+# Duration property access
+program.write("Work day in hours: " + work_day.hours)
+program.write("Work day in minutes: " + work_day.minutes)
+program.write("Vacation in days: " + vacation.days)
+program.write("Meeting in seconds: " + meeting.seconds)
+
+# Duration arithmetic
+total_work_time = work_day + 2 hours
+program.write("Total work time: " + total_work_time)
+
+short_break = 15 minutes
+net_lunch = lunch_break - short_break
+program.write("Net lunch time: " + net_lunch)
+
+# Combined durations
+daily_total = work_day + lunch_break
+program.write("Daily total time: " + daily_total)
+program.write("Daily total in hours: " + daily_total.hours)
+program.write("Daily total in minutes: " + daily_total.minutes)

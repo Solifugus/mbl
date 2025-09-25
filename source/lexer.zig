@@ -61,6 +61,12 @@ pub const TokenType = enum {
     unknown_kw,     // Unknown
     empty_kw,       // empty
 
+    // Duration units
+    days_kw,        // days
+    hours_kw,       // hours
+    minutes_kw,     // minutes
+    seconds_kw,     // seconds
+
     // Special
     newline,
     indent,         // Tab character for indentation
@@ -117,6 +123,10 @@ pub const TokenType = enum {
             .nothing_kw => "Nothing",
             .unknown_kw => "Unknown",
             .empty_kw => "empty",
+            .days_kw => "days",
+            .hours_kw => "hours",
+            .minutes_kw => "minutes",
+            .seconds_kw => "seconds",
             .newline => "NEWLINE",
             .indent => "INDENT",
             .eof => "EOF",
@@ -474,8 +484,8 @@ pub const Lexer = struct {
                 _ = self.advance();
             }
         } else {
-            // Handle numeric time/date formats
-            while (self.isDigit(self.peek()) or self.peek() == '-' or self.peek() == ':' or self.peek() == ' ') {
+            // Handle numeric time/date formats including ISO 8601 datetime (T separator)
+            while (self.isDigit(self.peek()) or self.peek() == '-' or self.peek() == ':' or self.peek() == ' ' or self.peek() == 'T') {
                 _ = self.advance();
             }
         }
@@ -561,6 +571,10 @@ pub const Lexer = struct {
             .{ "Nothing", .nothing_kw },
             .{ "Unknown", .unknown_kw },
             .{ "empty", .empty_kw },
+            .{ "days", .days_kw },
+            .{ "hours", .hours_kw },
+            .{ "minutes", .minutes_kw },
+            .{ "seconds", .seconds_kw },
         });
 
         return keywords.get(text) orelse .identifier;

@@ -185,6 +185,7 @@ pub const Literal = union(enum) {
     number: f64,
     money: MoneyLiteral,
     time: TimeLiteral,
+    duration: DurationLiteral,
     boolean: bool,
     nothing: void,
     unknown: void,
@@ -196,6 +197,7 @@ pub const Literal = union(enum) {
             .text => |text| allocator.free(text),
             .money => |*money| money.deinit(allocator),
             .time => |*time| time.deinit(allocator),
+            .duration => |*duration| duration.deinit(allocator),
             else => {}, // Other literals don't need cleanup
         }
     }
@@ -217,6 +219,15 @@ pub const TimeLiteral = struct {
 
     pub fn deinit(self: *TimeLiteral, allocator: std.mem.Allocator) void {
         allocator.free(self.value);
+    }
+};
+
+pub const DurationLiteral = struct {
+    value: f64,
+    unit: []const u8, // "days", "hours", "minutes", "seconds"
+
+    pub fn deinit(self: *DurationLiteral, allocator: std.mem.Allocator) void {
+        allocator.free(self.unit);
     }
 };
 
@@ -926,7 +937,12 @@ pub const Parser = struct {
             if (self.match(.left_paren)) {
                 expr = try self.finishCall(expr);
             } else if (self.match(.dot)) {
-                const name = try self.consume(.identifier, "Expected property name after '.'");
+                // Accept identifiers and duration unit keywords as property names
+                const name = if (self.match(.identifier) or self.match(.days_kw) or self.match(.hours_kw) or self.match(.minutes_kw) or self.match(.seconds_kw))
+                    self.previous()
+                else {
+                    return ParseError.UnexpectedToken;
+                };
                 const property = try self.allocator.dupe(u8, name.lexeme);
 
                 const object_ptr = try self.allocator.create(Expression);
@@ -1004,6 +1020,14 @@ pub const Parser = struct {
             const value = std.fmt.parseFloat(f64, self.previous().lexeme) catch {
                 return ParseError.ExpectedExpression;
             };
+
+            // Check if this number is followed by a duration unit
+            if (self.check(.days_kw) or self.check(.hours_kw) or self.check(.minutes_kw) or self.check(.seconds_kw)) {
+                const unit_token = self.advance();
+                const unit = try self.allocator.dupe(u8, unit_token.lexeme);
+                return Expression{ .literal = Literal{ .duration = DurationLiteral{ .value = value, .unit = unit }}};
+            }
+
             return Expression{ .literal = Literal{ .number = value }};
         }
 

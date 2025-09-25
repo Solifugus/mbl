@@ -297,6 +297,12 @@ pub const Interpreter = struct {
                 const money = try memory.Money.init(self.allocator, cents, currency, "USD", 1.0);
                 return MBLValue{ .money = money };
             },
+            .time => |time_literal| {
+                return try self.parseTimeString(time_literal.value);
+            },
+            .duration => |duration_literal| {
+                return try self.parseDurationLiteral(duration_literal);
+            },
             .empty => {
                 // Return empty string
                 return MBLValue{ .text = try memory.Text.init(self.allocator, "") };
@@ -306,6 +312,137 @@ pub const Interpreter = struct {
                 return MBLValue{ .text = try memory.Text.init(self.allocator, "unsupported_literal") };
             },
         }
+    }
+
+    fn parseTimeString(self: *Interpreter, time_str: []const u8) !MBLValue {
+        // Remove the @ prefix if present
+        var clean_str = time_str;
+        if (time_str.len > 0 and time_str[0] == '@') {
+            clean_str = time_str[1..];
+        }
+
+        // Handle special cases
+        if (std.mem.eql(u8, clean_str, "now")) {
+            return MBLValue{ .time = memory.Time.now() };
+        }
+
+        // Parse different time formats
+        if (clean_str.len == 10 and clean_str[4] == '-' and clean_str[7] == '-') {
+            // Date format: YYYY-MM-DD
+            return try self.parseDate(clean_str);
+        } else if (clean_str.len == 8 and clean_str[2] == ':' and clean_str[5] == ':') {
+            // Time format: HH:MM:SS
+            return try self.parseTime(clean_str);
+        } else if (clean_str.len == 19 and clean_str[10] == 'T') {
+            // DateTime format: YYYY-MM-DDTHH:MM:SS
+            return try self.parseDateTime(clean_str);
+        } else {
+            // Try to parse as timestamp
+            const timestamp = std.fmt.parseInt(i64, clean_str, 10) catch {
+                std.log.warn("  Invalid time format: {s}", .{time_str});
+                return MBLValue{ .time = memory.Time.init(0) };
+            };
+            return MBLValue{ .time = memory.Time.init(timestamp) };
+        }
+    }
+
+    fn parseDate(self: *Interpreter, date_str: []const u8) !MBLValue {
+        _ = self;
+        // Parse YYYY-MM-DD format
+        const year = std.fmt.parseInt(i32, date_str[0..4], 10) catch {
+            return MBLValue{ .time = memory.Time.init(0) };
+        };
+        const month = std.fmt.parseInt(u4, date_str[5..7], 10) catch {
+            return MBLValue{ .time = memory.Time.init(0) };
+        };
+        const day = std.fmt.parseInt(u5, date_str[8..10], 10) catch {
+            return MBLValue{ .time = memory.Time.init(0) };
+        };
+
+        // Convert to UNIX timestamp (simplified - assumes UTC)
+        // This is a basic implementation, a full implementation would use std.time
+        const days_since_epoch = daysSinceEpoch(year, month, day);
+        const timestamp = days_since_epoch * 24 * 60 * 60; // Convert days to seconds
+
+        return MBLValue{ .time = memory.Time.init(timestamp) };
+    }
+
+    fn parseTime(self: *Interpreter, time_str: []const u8) !MBLValue {
+        _ = self;
+        // Parse HH:MM:SS format - treat as seconds since midnight
+        const hour = std.fmt.parseInt(u5, time_str[0..2], 10) catch {
+            return MBLValue{ .time = memory.Time.init(0) };
+        };
+        const minute = std.fmt.parseInt(u6, time_str[3..5], 10) catch {
+            return MBLValue{ .time = memory.Time.init(0) };
+        };
+        const second = std.fmt.parseInt(u6, time_str[6..8], 10) catch {
+            return MBLValue{ .time = memory.Time.init(0) };
+        };
+
+        const total_seconds = @as(i64, hour) * 3600 + @as(i64, minute) * 60 + @as(i64, second);
+        return MBLValue{ .time = memory.Time.init(total_seconds) };
+    }
+
+    fn parseDateTime(self: *Interpreter, datetime_str: []const u8) !MBLValue {
+        // Parse YYYY-MM-DDTHH:MM:SS format
+        const date_part = datetime_str[0..10];
+        const time_part = datetime_str[11..19];
+
+        const date_val = try self.parseDate(date_part);
+        const time_val = try self.parseTime(time_part);
+
+        // Add time of day to the date
+        const combined_timestamp = date_val.time.value + time_val.time.value;
+        return MBLValue{ .time = memory.Time.init(combined_timestamp) };
+    }
+
+    fn parseDurationLiteral(self: *Interpreter, duration_literal: parser.DurationLiteral) !MBLValue {
+        _ = self;
+
+        if (std.mem.eql(u8, duration_literal.unit, "days")) {
+            return MBLValue{ .duration = memory.Duration.fromDays(duration_literal.value) };
+        } else if (std.mem.eql(u8, duration_literal.unit, "hours")) {
+            return MBLValue{ .duration = memory.Duration.fromHours(duration_literal.value) };
+        } else if (std.mem.eql(u8, duration_literal.unit, "minutes")) {
+            return MBLValue{ .duration = memory.Duration.fromMinutes(duration_literal.value) };
+        } else if (std.mem.eql(u8, duration_literal.unit, "seconds")) {
+            return MBLValue{ .duration = memory.Duration.fromSeconds(duration_literal.value) };
+        } else {
+            std.log.warn("  Unknown duration unit: {s}", .{duration_literal.unit});
+            return MBLValue{ .duration = memory.Duration.init(0) };
+        }
+    }
+
+    fn daysSinceEpoch(year: i32, month: u4, day: u5) i64 {
+        // Simplified calculation - assumes Gregorian calendar
+        // This is a basic implementation for demonstration
+        var total_days: i64 = 0;
+
+        // Add days for complete years since 1970
+        var y: i32 = 1970;
+        while (y < year) : (y += 1) {
+            total_days += if (isLeapYear(y)) 366 else 365;
+        }
+
+        // Add days for complete months in the current year
+        const days_in_month = [_]u5{31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+        var m: u4 = 1;
+        while (m < month) : (m += 1) {
+            total_days += days_in_month[m - 1];
+            if (m == 2 and isLeapYear(year)) {
+                total_days += 1; // Add leap day
+            }
+        }
+
+        // Add remaining days
+        total_days += day - 1; // Day 1 is the first day of the month
+
+        return total_days;
+    }
+
+    fn isLeapYear(year: i32) bool {
+        return (@rem(year, 4) == 0 and @rem(year, 100) != 0) or (@rem(year, 400) == 0);
     }
 
     fn evaluateCall(self: *Interpreter, call_expr: parser.CallExpression) !MBLValue {
@@ -434,6 +571,20 @@ pub const Interpreter = struct {
                         const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_text.data, right_str});
                         return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
                     },
+                    .time => |right_time| {
+                        // String concatenation: text + time
+                        const right_str = try right_time.formatDateTime(self.allocator);
+                        defer self.allocator.free(right_str);
+                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_text.data, right_str});
+                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
+                    },
+                    .duration => |right_duration| {
+                        // String concatenation: text + duration
+                        const right_str = try right_duration.format(self.allocator);
+                        defer self.allocator.free(right_str);
+                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_text.data, right_str});
+                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
+                    },
                     else => return error.TypeError,
                 }
             },
@@ -467,6 +618,40 @@ pub const Interpreter = struct {
                     else => return error.TypeError,
                 }
             },
+            .time => |left_time| {
+                switch (right) {
+                    .text => |right_text| {
+                        // String concatenation: time + text
+                        const left_str = try left_time.formatDateTime(self.allocator);
+                        defer self.allocator.free(left_str);
+                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_str, right_text.data});
+                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
+                    },
+                    .time => |right_time| {
+                        // Time arithmetic: time + time (duration)
+                        const result_time = left_time.add(right_time);
+                        return MBLValue{ .time = result_time };
+                    },
+                    else => return error.TypeError,
+                }
+            },
+            .duration => |left_duration| {
+                switch (right) {
+                    .text => |right_text| {
+                        // String concatenation: duration + text
+                        const left_str = try left_duration.format(self.allocator);
+                        defer self.allocator.free(left_str);
+                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_str, right_text.data});
+                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
+                    },
+                    .duration => |right_duration| {
+                        // Duration arithmetic: duration + duration
+                        const result_duration = left_duration.add(right_duration);
+                        return MBLValue{ .duration = result_duration };
+                    },
+                    else => return error.TypeError,
+                }
+            },
             else => return error.TypeError,
         }
     }
@@ -487,6 +672,26 @@ pub const Interpreter = struct {
                         const result_value = left_money.value - right_money.value;
                         const result_money = try memory.Money.init(self.allocator, result_value, left_money.currency, left_money.currency, 1.0);
                         return MBLValue{ .money = result_money };
+                    },
+                    else => return error.TypeError,
+                }
+            },
+            .time => |left_time| {
+                switch (right) {
+                    .time => |right_time| {
+                        // Time arithmetic: time - time (duration)
+                        const result_time = left_time.subtract(right_time);
+                        return MBLValue{ .time = result_time };
+                    },
+                    else => return error.TypeError,
+                }
+            },
+            .duration => |left_duration| {
+                switch (right) {
+                    .duration => |right_duration| {
+                        // Duration arithmetic: duration - duration
+                        const result_duration = left_duration.subtract(right_duration);
+                        return MBLValue{ .duration = result_duration };
                     },
                     else => return error.TypeError,
                 }
@@ -713,6 +918,40 @@ pub const Interpreter = struct {
                     return value;
                 } else {
                     std.log.warn("  Property '{s}' not found on record", .{prop_access.property});
+                    return MBLValue{ .text = try memory.Text.init(self.allocator, "undefined") };
+                }
+            },
+            .time => |time_value| {
+                // Handle time property access (year, month, day, hour, minute, second)
+                if (std.mem.eql(u8, prop_access.property, "year")) {
+                    return MBLValue{ .number = memory.Number{ .value = @floatFromInt(time_value.year()) } };
+                } else if (std.mem.eql(u8, prop_access.property, "month")) {
+                    return MBLValue{ .number = memory.Number{ .value = @floatFromInt(time_value.month()) } };
+                } else if (std.mem.eql(u8, prop_access.property, "day")) {
+                    return MBLValue{ .number = memory.Number{ .value = @floatFromInt(time_value.day()) } };
+                } else if (std.mem.eql(u8, prop_access.property, "hour")) {
+                    return MBLValue{ .number = memory.Number{ .value = @floatFromInt(time_value.hour()) } };
+                } else if (std.mem.eql(u8, prop_access.property, "minute")) {
+                    return MBLValue{ .number = memory.Number{ .value = @floatFromInt(time_value.minute()) } };
+                } else if (std.mem.eql(u8, prop_access.property, "second")) {
+                    return MBLValue{ .number = memory.Number{ .value = @floatFromInt(time_value.second()) } };
+                } else {
+                    std.log.warn("  Property '{s}' not found on time value", .{prop_access.property});
+                    return MBLValue{ .text = try memory.Text.init(self.allocator, "undefined") };
+                }
+            },
+            .duration => |duration_value| {
+                // Handle duration property access (days, hours, minutes, seconds)
+                if (std.mem.eql(u8, prop_access.property, "days")) {
+                    return MBLValue{ .number = memory.Number{ .value = duration_value.days() } };
+                } else if (std.mem.eql(u8, prop_access.property, "hours")) {
+                    return MBLValue{ .number = memory.Number{ .value = duration_value.hours() } };
+                } else if (std.mem.eql(u8, prop_access.property, "minutes")) {
+                    return MBLValue{ .number = memory.Number{ .value = duration_value.minutes() } };
+                } else if (std.mem.eql(u8, prop_access.property, "seconds")) {
+                    return MBLValue{ .number = memory.Number{ .value = duration_value.seconds() } };
+                } else {
+                    std.log.warn("  Property '{s}' not found on duration value", .{prop_access.property});
                     return MBLValue{ .text = try memory.Text.init(self.allocator, "undefined") };
                 }
             },

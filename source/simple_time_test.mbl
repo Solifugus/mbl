@@ -1,0 +1,2 @@
+current_time = @now
+program.write(current_time)

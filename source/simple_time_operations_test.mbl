@@ -1,0 +1,9 @@
+# Simple Time Operations Test
+
+# Test basic time assignment
+start_time = @2020-05-15T10:30:00
+program.write("Time assigned: " + start_time)
+
+# Test time component access
+year_val = start_time.year
+program.write("Year: " + year_val)

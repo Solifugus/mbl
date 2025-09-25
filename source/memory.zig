@@ -167,6 +167,114 @@ pub const Time = struct {
         const month_day = year_day.calculateMonthDay();
         return month_day.day_index + 1;
     }
+
+    pub fn hour(self: Time) u5 {
+        const seconds_in_day = @rem(self.value, 24 * 60 * 60);
+        return @intCast(@divTrunc(seconds_in_day, 60 * 60));
+    }
+
+    pub fn minute(self: Time) u6 {
+        const seconds_in_hour = @rem(self.value, 60 * 60);
+        return @intCast(@divTrunc(seconds_in_hour, 60));
+    }
+
+    pub fn second(self: Time) u6 {
+        return @intCast(@rem(self.value, 60));
+    }
+
+    pub fn formatDate(self: Time, allocator: std.mem.Allocator) ![]u8 {
+        return try std.fmt.allocPrint(allocator, "{d:0>4}-{d:0>2}-{d:0>2}", .{ self.year(), self.month(), self.day() });
+    }
+
+    pub fn formatTime(self: Time, allocator: std.mem.Allocator) ![]u8 {
+        return try std.fmt.allocPrint(allocator, "{d:0>2}:{d:0>2}:{d:0>2}", .{ self.hour(), self.minute(), self.second() });
+    }
+
+    pub fn formatDateTime(self: Time, allocator: std.mem.Allocator) ![]u8 {
+        return try std.fmt.allocPrint(allocator, "{d:0>4}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>2}", .{ self.year(), self.month(), self.day(), self.hour(), self.minute(), self.second() });
+    }
+};
+
+pub const Duration = struct {
+    value: i64, // Total duration in seconds
+
+    pub fn init(total_seconds: i64) Duration {
+        return Duration{ .value = total_seconds };
+    }
+
+    pub fn fromDays(day_count: f64) Duration {
+        return Duration{ .value = @intFromFloat(day_count * 24 * 60 * 60) };
+    }
+
+    pub fn fromHours(hour_count: f64) Duration {
+        return Duration{ .value = @intFromFloat(hour_count * 60 * 60) };
+    }
+
+    pub fn fromMinutes(minute_count: f64) Duration {
+        return Duration{ .value = @intFromFloat(minute_count * 60) };
+    }
+
+    pub fn fromSeconds(second_count: f64) Duration {
+        return Duration{ .value = @intFromFloat(second_count) };
+    }
+
+    pub fn add(self: Duration, other: Duration) Duration {
+        return Duration{ .value = self.value + other.value };
+    }
+
+    pub fn subtract(self: Duration, other: Duration) Duration {
+        return Duration{ .value = self.value - other.value };
+    }
+
+    pub fn days(self: Duration) f64 {
+        return @as(f64, @floatFromInt(self.value)) / (24 * 60 * 60);
+    }
+
+    pub fn hours(self: Duration) f64 {
+        return @as(f64, @floatFromInt(self.value)) / (60 * 60);
+    }
+
+    pub fn minutes(self: Duration) f64 {
+        return @as(f64, @floatFromInt(self.value)) / 60;
+    }
+
+    pub fn seconds(self: Duration) f64 {
+        return @floatFromInt(self.value);
+    }
+
+    pub fn format(self: Duration, allocator: std.mem.Allocator) ![]u8 {
+        const total_seconds = self.value;
+        const days_part = @divTrunc(total_seconds, 24 * 60 * 60);
+        const remaining_after_days = @rem(total_seconds, 24 * 60 * 60);
+        const hours_part = @divTrunc(remaining_after_days, 60 * 60);
+        const remaining_after_hours = @rem(remaining_after_days, 60 * 60);
+        const minutes_part = @divTrunc(remaining_after_hours, 60);
+        const seconds_part = @rem(remaining_after_hours, 60);
+
+        // Build human-readable duration string
+        var parts = std.ArrayList([]const u8).init(allocator);
+        defer parts.deinit();
+
+        if (days_part > 0) {
+            const day_str = try std.fmt.allocPrint(allocator, "{d} day{s}", .{ days_part, if (days_part == 1) "" else "s" });
+            try parts.append(day_str);
+        }
+        if (hours_part > 0) {
+            const hour_str = try std.fmt.allocPrint(allocator, "{d} hour{s}", .{ hours_part, if (hours_part == 1) "" else "s" });
+            try parts.append(hour_str);
+        }
+        if (minutes_part > 0) {
+            const minute_str = try std.fmt.allocPrint(allocator, "{d} minute{s}", .{ minutes_part, if (minutes_part == 1) "" else "s" });
+            try parts.append(minute_str);
+        }
+        if (seconds_part > 0 or parts.items.len == 0) {
+            const second_str = try std.fmt.allocPrint(allocator, "{d} second{s}", .{ seconds_part, if (seconds_part == 1) "" else "s" });
+            try parts.append(second_str);
+        }
+
+        // Join parts with " "
+        return std.mem.join(allocator, " ", parts.items);
+    }
 };
 
 pub const Record = struct {
@@ -350,6 +458,7 @@ pub const MBLValue = union(enum) {
     boolean: Boolean,
     money: Money,
     time: Time,
+    duration: Duration,
     record: Record,
     list: List,
     function: Function,
@@ -362,6 +471,7 @@ pub const MBLValue = union(enum) {
             .boolean => {}, // No cleanup needed
             .money => |*m| m.deinit(),
             .time => {}, // No cleanup needed
+            .duration => {}, // No cleanup needed
             .record => |*r| r.deinit(),
             .list => |*l| l.deinit(),
             .function => |*f| f.deinit(),
@@ -385,7 +495,13 @@ pub const MBLValue = union(enum) {
                 return Text{ .data = str };
             },
             .time => |t| {
-                const str = try std.fmt.allocPrint(allocator, "@{d}", .{t.value});
+                // Format as readable date-time
+                const str = try t.formatDateTime(allocator);
+                return Text{ .data = str };
+            },
+            .duration => |d| {
+                // Format as human-readable duration
+                const str = try d.format(allocator);
                 return Text{ .data = str };
             },
             .record => {
@@ -412,6 +528,7 @@ pub const MBLValue = union(enum) {
             .boolean => |b| return b.value,
             .money => |m| return m.value != 0,
             .time => |t| return t.value != 0,
+            .duration => |d| return d.value != 0,
             .record, .list, .function, .activator => return true,
         }
     }
@@ -436,6 +553,10 @@ pub const MBLValue = union(enum) {
             },
             .time => |t1| switch (other) {
                 .time => |t2| return t1.value == t2.value,
+                else => return false,
+            },
+            .duration => |d1| switch (other) {
+                .duration => |d2| return d1.value == d2.value,
                 else => return false,
             },
             else => return false, // Records, lists, functions, activators need deep comparison
