@@ -417,9 +417,26 @@ pub const Lexer = struct {
     fn scanString(self: *Lexer) LexError!Token {
         // Count consecutive opening quotes (we've already consumed the first one)
         var quote_count: usize = 1;
-        while (self.peek() == '"') {
-            quote_count += 1;
-            _ = self.advance();
+
+        // Special case: if we immediately see another quote, check if it's empty string vs multi-quote
+        if (self.peek() == '"') {
+            // Look ahead one more character to distinguish "" (empty) from ""text"" (multi-quote)
+            if (self.peekNext() != '"') {
+                // This is an empty string: we have "" - consume the closing quote and return
+                _ = self.advance(); // consume the second quote
+                return Token{
+                    .type = .text,
+                    .lexeme = self.source[self.start..self.current],
+                    .line = self.line,
+                    .column = self.start_column,
+                };
+            } else {
+                // This starts a multi-quote string: continue counting
+                while (self.peek() == '"') {
+                    quote_count += 1;
+                    _ = self.advance();
+                }
+            }
         }
 
         // For quote_count = 1: single quote strings like "text"

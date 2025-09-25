@@ -46,12 +46,7 @@ pub const Interpreter = struct {
         self.labels.deinit();
         self.scope_stack.deinit();
 
-        // Clean up registered functions
-        var func_iterator = self.functions.iterator();
-        while (func_iterator.next()) |entry| {
-            var func_decl = entry.value_ptr.*;
-            func_decl.deinit(self.allocator);
-        }
+        // Clean up function registry (no need to free individual functions since we store references)
         self.functions.deinit();
     }
 
@@ -118,6 +113,19 @@ pub const Interpreter = struct {
             try current_scope.set(name, value);
             std.log.info("📝 Created variable '{s}' in local scope at depth {}", .{name, self.scope_stack.items.len - 1});
         } else {
+            try self.memory.program.set(name, value);
+            std.log.info("📝 Created variable '{s}' in program scope", .{name});
+        }
+    }
+
+    // Create a variable in the current local scope (for function parameters)
+    pub fn createLocalVariable(self: *Interpreter, name: []const u8, value: MBLValue) !void {
+        if (self.scope_stack.items.len > 0) {
+            const current_scope = self.scope_stack.items[self.scope_stack.items.len - 1];
+            try current_scope.set(name, value);
+            std.log.info("📝 Created variable '{s}' in local scope at depth {}", .{name, self.scope_stack.items.len - 1});
+        } else {
+            // Fallback to program scope if no local scope exists
             try self.memory.program.set(name, value);
             std.log.info("📝 Created variable '{s}' in program scope", .{name});
         }
@@ -844,12 +852,28 @@ pub const Interpreter = struct {
     }
 
     fn performMultiplication(self: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {
-        _ = self;
         switch (left) {
             .number => |left_num| {
                 switch (right) {
                     .number => |right_num| {
                         return MBLValue{ .number = memory.Number{ .value = left_num.value * right_num.value } };
+                    },
+                    .money => |right_money| {
+                        // Number * Money -> Money
+                        const new_value = @as(i64, @intFromFloat(left_num.value * @as(f64, @floatFromInt(right_money.value))));
+                        const result_money = try memory.Money.init(self.allocator, new_value, right_money.currency, right_money.base, right_money.conversion);
+                        return MBLValue{ .money = result_money };
+                    },
+                    else => return error.TypeError,
+                }
+            },
+            .money => |left_money| {
+                switch (right) {
+                    .number => |right_num| {
+                        // Money * Number -> Money
+                        const new_value = @as(i64, @intFromFloat(@as(f64, @floatFromInt(left_money.value)) * right_num.value));
+                        const result_money = try memory.Money.init(self.allocator, new_value, left_money.currency, left_money.base, left_money.conversion);
+                        return MBLValue{ .money = result_money };
                     },
                     else => return error.TypeError,
                 }
@@ -859,7 +883,6 @@ pub const Interpreter = struct {
     }
 
     fn performDivision(self: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {
-        _ = self;
         switch (left) {
             .number => |left_num| {
                 switch (right) {
@@ -868,6 +891,28 @@ pub const Interpreter = struct {
                             return error.DivisionByZero;
                         }
                         return MBLValue{ .number = memory.Number{ .value = left_num.value / right_num.value } };
+                    },
+                    else => return error.TypeError,
+                }
+            },
+            .money => |left_money| {
+                switch (right) {
+                    .number => |right_num| {
+                        if (right_num.value == 0) {
+                            return error.DivisionByZero;
+                        }
+                        // Divide money by number -> money
+                        const new_value = @as(i64, @intFromFloat(@as(f64, @floatFromInt(left_money.value)) / right_num.value));
+                        const result_money = try memory.Money.init(self.allocator, new_value, left_money.currency, left_money.base, left_money.conversion);
+                        return MBLValue{ .money = result_money };
+                    },
+                    .money => |right_money| {
+                        // Divide money by money -> number (ratio)
+                        if (right_money.value == 0) {
+                            return error.DivisionByZero;
+                        }
+                        const ratio = @as(f64, @floatFromInt(left_money.value)) / @as(f64, @floatFromInt(right_money.value));
+                        return MBLValue{ .number = memory.Number{ .value = ratio } };
                     },
                     else => return error.TypeError,
                 }
@@ -1347,35 +1392,17 @@ pub const Interpreter = struct {
     fn registerFunction(self: *Interpreter, func_decl: parser.FunctionDeclaration) !void {
         std.log.info("🔧 Registering function '{s}' with {} parameters", .{func_decl.name, func_decl.parameters.len});
 
-        // Clone the function declaration for storage
-        const name_copy = try self.allocator.dupe(u8, func_decl.name);
-        var params_copy = try self.allocator.alloc(parser.Parameter, func_decl.parameters.len);
-        for (func_decl.parameters, 0..) |param, i| {
-            params_copy[i] = parser.Parameter{
-                .name = try self.allocator.dupe(u8, param.name),
-                .default_value = param.default_value, // Simple copy since Expression is a union
-            };
-        }
-
-        var body_copy = try self.allocator.alloc(parser.Statement, func_decl.body.len);
-        for (func_decl.body, 0..) |stmt, i| {
-            body_copy[i] = stmt; // Shallow copy for now - statements are immutable during execution
-        }
-
-        const func_copy = parser.FunctionDeclaration{
-            .name = name_copy,
-            .parameters = params_copy,
-            .body = body_copy,
-        };
-
-        try self.functions.put(func_decl.name, func_copy);
+        // Store reference to original function declaration to avoid double-free issues
+        // The original AST owns the memory, we just keep a reference
+        try self.functions.put(func_decl.name, func_decl);
         std.log.info("✅ Function '{s}' registered successfully", .{func_decl.name});
     }
 
     fn executeReturnStatement(self: *Interpreter, return_stmt: parser.ReturnStatement) !void {
         if (return_stmt.value) |return_expr| {
-            // Explicit return with value
-            self.return_value = try self.evaluateExpression(return_expr);
+            // Explicit return with value - make deep copy to avoid scope cleanup issues
+            const expr_value = try self.evaluateExpression(return_expr);
+            self.return_value = try expr_value.clone(self.allocator);
             std.log.info("🔄 Return statement executed with value", .{});
         } else {
             // Return without value (should return function's data scope)
@@ -1396,7 +1423,7 @@ pub const Interpreter = struct {
 
         // Create function's data scope (record for local variables)
         var function_scope = memory.Record.init(self.allocator);
-        defer function_scope.deinit();
+        // Note: Not using defer deinit() here to allow deep copy of return values
 
         // Push function scope
         try self.pushScope(&function_scope);
@@ -1413,7 +1440,7 @@ pub const Interpreter = struct {
                 return InterpreterError.TypeError;
             };
 
-            try self.setVariable(param.name, arg_value);
+            try self.createLocalVariable(param.name, arg_value);
             std.log.info("📝 Bound parameter '{s}' to argument", .{param.name});
         }
 
@@ -1433,15 +1460,18 @@ pub const Interpreter = struct {
             }
         }
 
-        // Determine return value
+        // Determine return value and handle cleanup
         if (self.return_value) |return_val| {
-            // Explicit return value
+            // Explicit return value - clean up function scope after extracting return value
             std.log.info("✅ Function '{s}' returned explicit value", .{func_name});
+            function_scope.deinit(); // Clean up now that we have the return value
             return return_val;
         } else {
-            // Implicit return: return function's data scope (record)
+            // Implicit return: return a deep copy of function's data scope (record)
             std.log.info("✅ Function '{s}' returning data scope (record)", .{func_name});
-            return MBLValue{ .record = function_scope };
+            const cloned_record = try function_scope.clone();
+            function_scope.deinit(); // Clean up the original scope after cloning
+            return MBLValue{ .record = cloned_record };
         }
     }
 };

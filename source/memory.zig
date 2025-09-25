@@ -1,6 +1,12 @@
 // memory.zig
 const std = @import("std");
 
+// Common error types for memory operations
+const MemoryError = error{
+    OutOfMemory,
+    InvalidInput,
+};
+
 // Forward declarations to avoid circular imports
 pub const Statement = opaque {};
 pub const Expression = opaque {};
@@ -318,6 +324,23 @@ pub const Record = struct {
     pub fn has(self: *Record, key: []const u8) bool {
         return self.data.contains(key) or (self.super != null and self.super.?.has(key));
     }
+
+    pub fn clone(self: *const Record) (std.mem.Allocator.Error || MemoryError)!Record {
+        var cloned_record = Record.init(self.allocator);
+
+        // Deep copy all key-value pairs
+        var iterator = self.data.iterator();
+        while (iterator.next()) |entry| {
+            const key_copy = try self.allocator.dupe(u8, entry.key_ptr.*);
+            const value_copy = try entry.value_ptr.clone(self.allocator);
+            try cloned_record.data.put(key_copy, value_copy);
+        }
+
+        // Note: not copying super chain for now - would need careful design
+        cloned_record.super = self.super;
+
+        return cloned_record;
+    }
 };
 
 pub const List = struct {
@@ -560,6 +583,37 @@ pub const MBLValue = union(enum) {
                 else => return false,
             },
             else => return false, // Records, lists, functions, activators need deep comparison
+        }
+    }
+
+    pub fn clone(self: MBLValue, allocator: std.mem.Allocator) (std.mem.Allocator.Error || MemoryError)!MBLValue {
+        switch (self) {
+            .text => |t| return MBLValue{ .text = try Text.init(allocator, t.data) },
+            .number => |n| return MBLValue{ .number = n },
+            .boolean => |b| return MBLValue{ .boolean = b },
+            .money => |m| return MBLValue{ .money = try Money.init(allocator, m.value, m.currency, m.base, m.conversion) },
+            .time => |t| return MBLValue{ .time = t },
+            .duration => |d| return MBLValue{ .duration = d },
+            .record => |r| {
+                var cloned_record = try r.clone();
+                return MBLValue{ .record = cloned_record };
+            },
+            .list => |l| {
+                var cloned_list = List.init(allocator);
+                for (l.data.items) |item| {
+                    try cloned_list.append(try item.clone(allocator));
+                }
+                return MBLValue{ .list = cloned_list };
+            },
+            .function => |f| {
+                // For functions, we'll just create a reference copy for now
+                // Full deep copy would require duplicating the body AST
+                return MBLValue{ .function = f };
+            },
+            .activator => |a| {
+                // Similar to functions, just reference copy for now
+                return MBLValue{ .activator = a };
+            },
         }
     }
 };
