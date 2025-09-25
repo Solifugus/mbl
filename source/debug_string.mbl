@@ -1,0 +1,3 @@
+# Test string concatenation
+value = "Hello World"
+program.write("Test: " + value)

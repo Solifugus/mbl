@@ -1,0 +1,22 @@
+# Test MBL business types
+company_budget = $1250000
+meeting_time = @2024-03-15
+project_deadline = @2024-12-31
+
+# Test money operations
+half_budget = company_budget / 2
+program.write("Budget: " + company_budget)
+program.write("Half budget: " + half_budget)
+
+# Test time display
+program.write("Meeting: " + meeting_time)
+program.write("Deadline: " + project_deadline)
+
+# Test comparisons
+if company_budget > $1000000 then
+	program.write("Large budget!")
+end
+
+if project_deadline > meeting_time then
+	program.write("Deadline is after meeting")
+end

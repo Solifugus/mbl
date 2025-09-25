@@ -1,0 +1,8 @@
+# Test the exact greet function from final_test
+greet(name, greeting):
+	message = greeting + " " + name
+	return message
+
+msg1 = greet("Alice", "Hello")
+program.write("Direct result: " + greet("Bob", "Hi"))
+program.write("Variable result: " + msg1)

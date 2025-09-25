@@ -1,0 +1,31 @@
+# Complete MBL Business Types Test
+company = "TechCorp Inc"
+budget = $1250000
+quarter_budget = budget / 4
+large_threshold = $1000000
+
+meeting_date = @2024-03-15
+project_deadline = @2024-12-31
+
+program.write("=== FINANCIAL REPORT ===")
+program.write("Company: " + company)
+program.write("Total Budget: " + budget)
+program.write("Quarterly Budget: " + quarter_budget)
+
+program.write("=== SCHEDULE ===")
+program.write("Meeting Date: " + meeting_date)
+program.write("Project Deadline: " + project_deadline)
+
+program.write("=== ANALYSIS ===")
+
+if budget > large_threshold then
+	program.write("✓ Large budget company")
+else
+	program.write("○ Standard budget company")
+end
+
+# Test money arithmetic
+remaining_budget = budget - quarter_budget * 2
+program.write("Remaining after 2 quarters: " + remaining_budget)
+
+program.write("=== REPORT COMPLETE ===")

@@ -1,0 +1,11 @@
+# Test for loop - first create a list
+create_list():
+	numbers = [1, 2, 3, 4, 5]
+	return numbers
+
+number_list = create_list()
+
+for num in number_list:
+	program.write("Number: " + num)
+
+program.write("For loop finished")

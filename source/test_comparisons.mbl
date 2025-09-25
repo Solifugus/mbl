@@ -1,0 +1,21 @@
+# Test comparison and logical operators
+a = 10
+b = 5
+c = 10
+
+# Test comparison operators
+equal_test = (a == c)
+not_equal_test = (a != b)
+less_than_test = (b < a)
+greater_than_test = (a > b)
+
+# Test logical operators
+and_test = (a == c) and (b < a)
+or_test = (a == b) or (b < a)
+
+program.write("Equal: " + equal_test)
+program.write("Not equal: " + not_equal_test)
+program.write("Less than: " + less_than_test)
+program.write("Greater than: " + greater_than_test)
+program.write("And: " + and_test)
+program.write("Or: " + or_test)

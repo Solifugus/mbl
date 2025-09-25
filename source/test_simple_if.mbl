@@ -1,0 +1,10 @@
+# Test simple if/else
+score = 85
+
+if score > 80 then
+	program.write("Good score!")
+else
+	program.write("Needs improvement")
+end
+
+program.write("Done testing")

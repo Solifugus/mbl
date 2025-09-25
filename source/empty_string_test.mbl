@@ -1,0 +1,3 @@
+# Test empty string
+empty = ""
+program.write("Empty string works")

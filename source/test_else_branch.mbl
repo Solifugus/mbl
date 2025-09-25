@@ -1,0 +1,10 @@
+# Test else branch
+score = 75
+
+if score > 80 then
+	program.write("Good score!")
+else
+	program.write("Needs improvement")
+end
+
+program.write("Final score: " + score)

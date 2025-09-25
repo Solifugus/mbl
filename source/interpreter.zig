@@ -27,6 +27,7 @@ pub const Interpreter = struct {
     scope_stack: std.ArrayList(*memory.Record), // Stack of local scopes (deepest first)
     functions: std.HashMap([]const u8, parser.FunctionDeclaration, std.hash_map.StringContext, std.hash_map.default_max_load_percentage), // Function registry
     return_value: ?MBLValue, // Store return value from functions
+    quiet_mode: bool, // Suppress debug output when true
 
     pub fn init(allocator: std.mem.Allocator, mem: *Memory) Interpreter {
         return Interpreter{
@@ -38,6 +39,7 @@ pub const Interpreter = struct {
             .scope_stack = std.ArrayList(*memory.Record).init(allocator),
             .functions = std.HashMap([]const u8, parser.FunctionDeclaration, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(allocator),
             .return_value = null,
+            .quiet_mode = false,
         };
     }
 
@@ -48,6 +50,12 @@ pub const Interpreter = struct {
 
         // Clean up function registry (no need to free individual functions since we store references)
         self.functions.deinit();
+    }
+
+    fn log(self: *Interpreter, comptime fmt: []const u8, args: anytype) void {
+        if (!self.quiet_mode) {
+            std.log.info(fmt, args);
+        }
     }
 
     // Scope management methods
@@ -78,7 +86,7 @@ pub const Interpreter = struct {
 
         // Then check program scope
         if (self.memory.program.data.get(name)) |value| {
-            std.log.info("🔍 Variable '{s}' found in program scope", .{name});
+            self.log("🔍 Variable '{s}' found in program scope", .{name});
             return value;
         }
 
@@ -103,7 +111,7 @@ pub const Interpreter = struct {
         // Check if exists in program scope
         if (self.memory.program.data.contains(name)) {
             try self.memory.program.set(name, value);
-            std.log.info("📝 Updated variable '{s}' in program scope", .{name});
+            self.log("📝 Updated variable '{s}' in program scope", .{name});
             return;
         }
 
@@ -114,7 +122,7 @@ pub const Interpreter = struct {
             std.log.info("📝 Created variable '{s}' in local scope at depth {}", .{name, self.scope_stack.items.len - 1});
         } else {
             try self.memory.program.set(name, value);
-            std.log.info("📝 Created variable '{s}' in program scope", .{name});
+            self.log("📝 Created variable '{s}' in program scope", .{name});
         }
     }
 
@@ -127,12 +135,12 @@ pub const Interpreter = struct {
         } else {
             // Fallback to program scope if no local scope exists
             try self.memory.program.set(name, value);
-            std.log.info("📝 Created variable '{s}' in program scope", .{name});
+            self.log("📝 Created variable '{s}' in program scope", .{name});
         }
     }
 
     pub fn execute(self: *Interpreter, statements: []Statement) !void {
-        std.log.info("🔥 Executing {} MBL statements...", .{statements.len});
+        self.log("🔥 Executing {} MBL statements...", .{statements.len});
 
         // First pass: collect all labels
         for (statements, 0..) |stmt, i| {
@@ -160,7 +168,7 @@ pub const Interpreter = struct {
                 }
             } else {
                 if (self.executeStatement(stmt)) |_| {
-                    std.log.info("✓ Statement {} completed", .{pc + 1});
+                    self.log("✓ Statement {} completed", .{pc + 1});
                 } else |err| switch (err) {
                     InterpreterError.GotoExecuted => {
                         // A goto was executed from within this statement
@@ -191,7 +199,7 @@ pub const Interpreter = struct {
             pc += 1;
         }
 
-        std.log.info("✅ All statements executed successfully", .{});
+        self.log("✅ All statements executed successfully", .{});
     }
 
     fn executeStatement(self: *Interpreter, stmt: Statement) !void {
@@ -248,7 +256,7 @@ pub const Interpreter = struct {
             .identifier => |identifier| {
                 const var_name = identifier.name;
                 try self.setVariable(var_name, value);
-                std.log.info("  Assigned {s}", .{var_name});
+                self.log("  Assigned {s}", .{var_name});
             },
             .property_access => |prop_access| {
                 try self.assignToProperty(prop_access, value);
@@ -632,7 +640,6 @@ pub const Interpreter = struct {
 
             try self.output.appendSlice(output_text);
             try self.output.append('\n');
-            std.log.info("📤 program.write: {s}", .{output_text});
         }
         return MBLValue{ .text = try memory.Text.init(self.allocator, "") };
     }

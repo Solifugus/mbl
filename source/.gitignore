@@ -1,5 +1,5 @@
 # MBL Build Artifacts
-mbl_run
+mbl
 *.o
 zig-cache/
 zig-out/

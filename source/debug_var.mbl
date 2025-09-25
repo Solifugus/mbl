@@ -1,0 +1,10 @@
+# Test variable storage and retrieval
+value = "Hello World"
+program.write(value)
+
+# Test function return storage
+make_text():
+	return "Test Result"
+
+result = make_text()
+program.write(result)

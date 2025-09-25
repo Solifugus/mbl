@@ -1,0 +1,3 @@
+# Test simple time parsing
+deadline = @2024-12-25
+program.write("Deadline: " + deadline)

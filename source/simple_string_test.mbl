@@ -1,0 +1,3 @@
+# Simple string test
+text = "Hello"
+program.write(text)

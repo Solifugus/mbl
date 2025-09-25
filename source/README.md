@@ -4,21 +4,57 @@
 
 ## 🚀 Quick Start
 
-### Building
+### Installation
+
+#### Quick Installation (Recommended)
 ```bash
+# One-command install
+./install.sh
+```
+
+#### Manual Installation
+```bash
+# Build with optimized settings
+zig build -Doptimize=ReleaseFast
+
+# Install globally (requires admin/sudo)
+sudo cp zig-out/bin/mbl /usr/local/bin/
+```
+
+#### Development Build
+```bash
+# Quick build for development/testing
 ./build.sh
 ```
 
-### Running MBL Programs
+#### Uninstallation
 ```bash
-./mbl_run <filename.mbl>
+# Remove MBL from system
+./uninstall.sh
+```
+
+### Running MBL Programs
+
+#### Local execution (after building)
+```bash
+# Using the built executable
+./zig-out/bin/mbl <filename.mbl>
+
+# Or if using the shell script build
+./mbl <filename.mbl>
+```
+
+#### Global execution (after installation)
+```bash
+# Run from anywhere on the system
+mbl <filename.mbl>
 ```
 
 ### Examples
 ```bash
-./mbl_run hello.mbl
-./mbl_run demo.mbl
-./mbl_run test_simple_datatypes.mbl
+./mbl hello.mbl
+./mbl demo.mbl
+./mbl test_simple_datatypes.mbl
 ```
 
 ## 📝 Language Features (v0.1.0)

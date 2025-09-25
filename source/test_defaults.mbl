@@ -1,0 +1,11 @@
+# Test default parameters explicitly
+greet(name, greeting = "Hello"):
+	return greeting + " " + name
+
+# Test with default
+result1 = greet("Alice") 
+program.write(result1)
+
+# Test with explicit value  
+result2 = greet("Bob", "Hi")
+program.write(result2)

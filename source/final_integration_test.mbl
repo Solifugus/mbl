@@ -1,0 +1,54 @@
+# Final Integration Test - All Features
+# This test exercises all major MBL language features together
+
+# Basic variables and types
+company_name = "TechCorp Inc"
+revenue = 1250000
+employees = 25
+is_profitable = true
+empty_field = ""
+
+# Complex expressions
+revenue_per_employee = revenue / employees
+status_message = company_name + " has " + employees + " employees and $" + revenue + " revenue"
+
+# Function with multiple features
+calculate_growth_metrics(current_revenue, previous_revenue, name = "Unknown Company"):
+	growth_rate = (current_revenue - previous_revenue) / previous_revenue * 100
+	growth_dollars = current_revenue - previous_revenue
+
+	# Local calculations
+	temp_msg = "Growth analysis for " + name
+
+	return temp_msg + ": " + growth_rate + "% (" + growth_dollars + " dollars)"
+
+# Function returning data structure
+create_company_profile():
+	profile_name = company_name
+	total_revenue = revenue
+	employee_count = employees
+	profitable = is_profitable
+	notes = "Generated profile with all data"
+	empty_note = empty_field
+
+# Nested function calls and complex expressions
+growth_report = calculate_growth_metrics(revenue, 1000000, company_name)
+company_profile = create_company_profile()
+
+# Test all outputs
+program.write("=== COMPANY REPORT ===")
+program.write("Company: " + company_name)
+program.write("Revenue: $" + revenue)
+program.write("Employees: " + employees)
+program.write("Profitable: " + is_profitable)
+program.write("Revenue per employee: $" + revenue_per_employee)
+program.write("Status: " + status_message)
+program.write("Growth: " + growth_report)
+program.write("=== COMPANY PROFILE ===")
+program.write("Profile Name: " + company_profile.profile_name)
+program.write("Total Revenue: $" + company_profile.total_revenue)
+program.write("Employee Count: " + company_profile.employee_count)
+program.write("Profitable: " + company_profile.profitable)
+program.write("Notes: " + company_profile.notes)
+program.write("Empty Note: '" + company_profile.empty_note + "'")
+program.write("=== TEST COMPLETE ===")

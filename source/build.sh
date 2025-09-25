@@ -4,16 +4,16 @@
 echo "🔧 Building MBL Language Interpreter..."
 
 # Build the main interpreter
-if zig build-exe mbl_run.zig; then
+if zig build-exe mbl_run.zig -femit-bin=mbl; then
     echo "✅ MBL interpreter built successfully!"
-    echo "📁 Executable: ./mbl_run"
+    echo "📁 Executable: ./mbl"
     echo ""
     echo "🚀 Usage:"
-    echo "  ./mbl_run <filename.mbl>"
+    echo "  ./mbl <filename.mbl>"
     echo ""
     echo "📝 Example:"
-    echo "  ./mbl_run hello.mbl"
-    echo "  ./mbl_run demo.mbl"
+    echo "  ./mbl hello.mbl"
+    echo "  ./mbl demo.mbl"
 else
     echo "❌ Build failed!"
     exit 1

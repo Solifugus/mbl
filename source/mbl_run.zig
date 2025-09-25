@@ -16,12 +16,28 @@ pub fn main() !void {
     defer std.process.argsFree(allocator, args);
 
     if (args.len < 2) {
-        std.log.info("Usage: mbl_run <filename.mbl>", .{});
-        std.log.info("Example: ./mbl_run demo.mbl", .{});
+        std.log.info("Usage: mbl [--quiet] <filename.mbl>", .{});
+        std.log.info("Example: mbl demo.mbl", .{});
+        std.log.info("  --quiet  Suppress debug output", .{});
         return;
     }
 
-    const filename = args[1];
+    // Parse arguments
+    var quiet_mode = false;
+    var filename: []const u8 = "";
+
+    for (args[1..]) |arg| {
+        if (std.mem.eql(u8, arg, "--quiet") or std.mem.eql(u8, arg, "-q")) {
+            quiet_mode = true;
+        } else if (filename.len == 0 and !std.mem.startsWith(u8, arg, "-")) {
+            filename = arg;
+        }
+    }
+
+    if (filename.len == 0) {
+        std.log.info("Error: No filename provided", .{});
+        return;
+    }
 
     // Read the MBL file
     const file = std.fs.cwd().openFile(filename, .{}) catch |err| {
@@ -36,10 +52,12 @@ pub fn main() !void {
 
     _ = try file.readAll(mbl_code);
 
-    std.log.info("✓ Loaded {} bytes of MBL code", .{mbl_code.len});
-    std.log.info("--- MBL Code ---", .{});
-    std.log.info("{s}", .{mbl_code});
-    std.log.info("--- Processing ---", .{});
+    if (!quiet_mode) {
+        std.log.info("✓ Loaded {} bytes of MBL code", .{mbl_code.len});
+        std.log.info("--- MBL Code ---", .{});
+        std.log.info("{s}", .{mbl_code});
+        std.log.info("--- Processing ---", .{});
+    }
 
     // Initialize components
     var lex = Lexer.init(allocator, mbl_code);
@@ -49,26 +67,27 @@ pub fn main() !void {
 
     // Tokenize
     const tokens = try lex.scanTokens();
-    std.log.info("✓ Lexer: {} tokens", .{tokens.items.len});
+    if (!quiet_mode) std.log.info("✓ Lexer: {} tokens", .{tokens.items.len});
 
     // Parse
     var main_parser = Parser.init(allocator, tokens.items);
 
     const statements = try main_parser.parse();
-    std.log.info("✓ Parser: {} statements", .{statements.len});
+    if (!quiet_mode) std.log.info("✓ Parser: {} statements", .{statements.len});
 
     // Execute
     var interp = Interpreter.init(allocator, &mem);
     defer interp.deinit();
 
+    interp.quiet_mode = quiet_mode;
     try interp.execute(statements);
-    std.log.info("✅ Program execution completed!", .{});
+    if (!quiet_mode) std.log.info("✅ Program execution completed!", .{});
 
-    // Show program output
+    // Show program output to stdout
     const output = interp.output.items;
     if (output.len > 0) {
-        std.log.info("--- Program Output ---", .{});
-        std.log.info("{s}", .{output});
+        const stdout = std.io.getStdOut().writer();
+        try stdout.print("{s}", .{output});
     }
 
     // Clean up statements
@@ -77,5 +96,5 @@ pub fn main() !void {
     }
     allocator.free(statements);
 
-    std.log.info("🎉 MBL Program '{s}' executed successfully!", .{filename});
+    if (!quiet_mode) std.log.info("🎉 MBL Program '{s}' executed successfully!", .{filename});
 }

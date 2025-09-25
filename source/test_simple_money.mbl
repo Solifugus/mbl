@@ -1,0 +1,3 @@
+# Test simple money parsing
+budget = $50000
+program.write("Budget: " + budget)

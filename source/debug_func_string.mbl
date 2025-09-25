@@ -1,0 +1,6 @@
+# Test function return value concatenation
+make_greeting(name):
+	return "Hello " + name
+
+result = make_greeting("Alice")
+program.write("Result: " + result)

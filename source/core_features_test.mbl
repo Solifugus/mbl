@@ -1,0 +1,55 @@
+# Core MBL Language Features Test
+
+# 1. Basic data types and variables
+text_var = "Hello World"
+number_var = 42.5
+boolean_var = true
+
+# 2. Arithmetic operations
+sum = 10 + 5
+diff = 20 - 8
+product = 6 * 7
+quotient = 15 / 3
+
+# 3. String operations
+greeting = "Hello " + "MBL"
+repeated = text_var + " " + text_var
+
+# 4. Function definitions and calls
+calculate_area(length, width):
+	area = length * width
+	return area
+
+rectangle_area = calculate_area(5, 3)
+
+# 5. Function with default parameters
+make_greeting(name, greeting = "Hello"):
+	return greeting + " " + name
+
+default_greeting = make_greeting("Alice")
+custom_greeting = make_greeting("Bob", "Hi")
+
+# 6. Implicit return (data scope)
+create_person():
+	name = "John Doe"
+	age = 30
+	active = true
+
+person = create_person()
+
+# Test all outputs
+program.write("Text: " + text_var)
+program.write("Number: " + number_var)
+program.write("Boolean: " + boolean_var)
+program.write("Sum: " + sum)
+program.write("Diff: " + diff)
+program.write("Product: " + product)
+program.write("Quotient: " + quotient)
+program.write("Greeting: " + greeting)
+program.write("Repeated: " + repeated)
+program.write("Area: " + rectangle_area)
+program.write("Default: " + default_greeting)
+program.write("Custom: " + custom_greeting)
+program.write("Person name: " + person.name)
+program.write("Person age: " + person.age)
+program.write("Person active: " + person.active)

@@ -1,0 +1,8 @@
+# Test while loop
+counter = 1
+
+while counter <= 5:
+	program.write("Count: " + counter)
+	counter = counter + 1
+
+program.write("Loop finished")
