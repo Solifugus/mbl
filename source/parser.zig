@@ -1117,6 +1117,9 @@ pub const Parser = struct {
 
         if (!self.check(.right_brace)) {
             while (true) {
+                // Skip any newlines
+                while (self.match(.newline)) {}
+
                 // Key can be identifier or string
                 var key: Expression = undefined;
                 if (self.check(.identifier)) {
@@ -1138,8 +1141,14 @@ pub const Parser = struct {
                 });
 
                 if (!self.match(.comma)) break;
+
+                // Skip any newlines after comma
+                while (self.match(.newline)) {}
             }
         }
+
+        // Skip any final newlines before closing brace
+        while (self.match(.newline)) {}
 
         _ = try self.consume(.right_brace, "Expected '}' after record fields");
 

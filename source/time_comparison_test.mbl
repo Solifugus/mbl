@@ -1,0 +1,54 @@
+# Time Comparison Test - MBL v0.5.0
+
+# Time comparisons
+start_time = @2020-05-15T10:30:00
+end_time = @2020-05-15T14:45:30
+same_time = @2020-05-15T10:30:00
+
+program.write("Start time: " + start_time)
+program.write("End time: " + end_time)
+program.write("Same time: " + same_time)
+
+# Time equality comparisons
+program.write("start_time == same_time: " + (start_time == same_time))
+program.write("start_time == end_time: " + (start_time == end_time))
+program.write("start_time != end_time: " + (start_time != end_time))
+
+# Time ordering comparisons
+program.write("start_time < end_time: " + (start_time < end_time))
+program.write("end_time > start_time: " + (end_time > start_time))
+program.write("start_time <= same_time: " + (start_time <= same_time))
+program.write("start_time >= same_time: " + (start_time >= same_time))
+
+# Duration comparisons
+short_duration = 30 minutes
+long_duration = 2 hours
+same_duration = 30 minutes
+
+program.write("Short duration: " + short_duration)
+program.write("Long duration: " + long_duration)
+program.write("Same duration: " + same_duration)
+
+# Duration equality comparisons
+program.write("short_duration == same_duration: " + (short_duration == same_duration))
+program.write("short_duration == long_duration: " + (short_duration == long_duration))
+program.write("short_duration != long_duration: " + (short_duration != long_duration))
+
+# Duration ordering comparisons
+program.write("short_duration < long_duration: " + (short_duration < long_duration))
+program.write("long_duration > short_duration: " + (long_duration > short_duration))
+program.write("short_duration <= same_duration: " + (short_duration <= same_duration))
+program.write("short_duration >= same_duration: " + (short_duration >= same_duration))
+
+# Mixed time range checks
+meeting_start = @2020-05-15T14:00:00
+meeting_end = @2020-05-15T15:00:00
+current_check = @2020-05-15T14:30:00
+
+program.write("Meeting start: " + meeting_start)
+program.write("Meeting end: " + meeting_end)
+program.write("Current check: " + current_check)
+
+# Check if current time is within meeting time
+in_meeting = (current_check >= meeting_start) and (current_check <= meeting_end)
+program.write("Currently in meeting: " + in_meeting)

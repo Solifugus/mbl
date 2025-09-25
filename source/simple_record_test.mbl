@@ -1,0 +1,11 @@
+# Simple Record Test - MBL v0.5.0
+
+# Basic record creation
+person = {
+    name: "Alice",
+    age: 30
+}
+
+program.write("Person: " + person)
+program.write("Name: " + person.name)
+program.write("Age: " + person.age)

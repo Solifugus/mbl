@@ -268,6 +268,9 @@ pub const Interpreter = struct {
             .unary => |unary_expr| {
                 return try self.evaluateUnaryExpression(unary_expr);
             },
+            .record_literal => |record_literal| {
+                return try self.evaluateRecordLiteral(record_literal);
+            },
             else => {
                 std.log.warn("  Expression type {s} not yet supported", .{@tagName(expr)});
                 return MBLValue{ .text = try memory.Text.init(self.allocator, "unsupported") };
@@ -412,6 +415,43 @@ pub const Interpreter = struct {
             std.log.warn("  Unknown duration unit: {s}", .{duration_literal.unit});
             return MBLValue{ .duration = memory.Duration.init(0) };
         }
+    }
+
+    fn evaluateRecordLiteral(self: *Interpreter, record_literal: parser.RecordLiteral) anyerror!MBLValue {
+        var record = memory.Record.init(self.allocator);
+
+        for (record_literal.fields) |field| {
+            // Handle the key - identifiers should be treated as literal text
+            const key_str = switch (field.key) {
+                .identifier => |identifier| identifier.name,
+                .literal => |literal| switch (literal) {
+                    .text => |text| text,
+                    else => {
+                        std.log.warn("  Record key must be text, got {s}", .{@tagName(literal)});
+                        return MBLValue{ .text = try memory.Text.init(self.allocator, "invalid_record") };
+                    }
+                },
+                else => blk: {
+                    // For computed keys, evaluate them
+                    const key_value = try self.evaluateExpression(field.key);
+                    break :blk switch (key_value) {
+                        .text => |text| text.data,
+                        else => {
+                            std.log.warn("  Record key must evaluate to text, got {s}", .{@tagName(key_value)});
+                            return MBLValue{ .text = try memory.Text.init(self.allocator, "invalid_record") };
+                        }
+                    };
+                }
+            };
+
+            // Evaluate the value
+            const value = try self.evaluateExpression(field.value);
+
+            // Add to record
+            try record.set(key_str, value);
+        }
+
+        return MBLValue{ .record = record };
     }
 
     fn daysSinceEpoch(year: i32, month: u4, day: u5) i64 {
@@ -582,6 +622,13 @@ pub const Interpreter = struct {
                         // String concatenation: text + duration
                         const right_str = try right_duration.format(self.allocator);
                         defer self.allocator.free(right_str);
+                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_text.data, right_str});
+                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
+                    },
+                    .record => |right_record| {
+                        // String concatenation: text + record
+                        _ = right_record;
+                        const right_str = "[Record]"; // Simple representation for now
                         const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_text.data, right_str});
                         return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
                     },
@@ -771,6 +818,14 @@ pub const Interpreter = struct {
                     std.mem.eql(u8, left_money.currency, right_money.currency),
                 else => false,
             },
+            .time => |left_time| switch (right) {
+                .time => |right_time| left_time.value == right_time.value,
+                else => false,
+            },
+            .duration => |left_duration| switch (right) {
+                .duration => |right_duration| left_duration.value == right_duration.value,
+                else => false,
+            },
             else => false,
         };
         return MBLValue{ .boolean = memory.Boolean{ .value = result } };
@@ -792,6 +847,14 @@ pub const Interpreter = struct {
                 .money => |right_money| left_money.value < right_money.value,
                 else => return error.TypeError,
             },
+            .time => |left_time| switch (right) {
+                .time => |right_time| left_time.value < right_time.value, // Earlier time is "less than"
+                else => return error.TypeError,
+            },
+            .duration => |left_duration| switch (right) {
+                .duration => |right_duration| left_duration.value < right_duration.value, // Shorter duration is "less than"
+                else => return error.TypeError,
+            },
             else => return error.TypeError,
         };
         return MBLValue{ .boolean = memory.Boolean{ .value = result } };
@@ -806,6 +869,14 @@ pub const Interpreter = struct {
             },
             .money => |left_money| switch (right) {
                 .money => |right_money| left_money.value > right_money.value,
+                else => return error.TypeError,
+            },
+            .time => |left_time| switch (right) {
+                .time => |right_time| left_time.value > right_time.value, // Later time is "greater than"
+                else => return error.TypeError,
+            },
+            .duration => |left_duration| switch (right) {
+                .duration => |right_duration| left_duration.value > right_duration.value, // Longer duration is "greater than"
                 else => return error.TypeError,
             },
             else => return error.TypeError,

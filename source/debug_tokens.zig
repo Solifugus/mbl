@@ -7,7 +7,7 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    const source = "datetime_full = @2020-05-15T14:30:00";
+    const source = "person = {\n    name: \"Alice\",\n    age: 30\n}";
 
     std.debug.print("Source ({d} chars): {s}\n", .{source.len, source});
     std.debug.print("Characters: ", .{});
