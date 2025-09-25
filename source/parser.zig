@@ -407,25 +407,39 @@ pub const Parser = struct {
 
             // Look ahead for pattern recognition
             if (self.checkNext(.colon)) {
-                // Could be label, function, or activator
-                const saved_pos = self.current;
-                _ = self.advance(); // Skip identifier
-                _ = self.advance(); // Skip colon
-
-                // Check if there are parameters (function) or condition (activator)
-                const _has_parens = saved_pos + 1 < self.tokens.len and self.tokens[saved_pos].type == .identifier;
-                _ = _has_parens;
-
-                // Restore position
-                self.current = saved_pos;
-
-                if (self.current > 0 and self.tokens[self.current - 1].type == .right_paren) {
-                    return self.parseFunctionDeclaration();
-                } else if (self.hasConditionAfterName()) {
+                // Simple case: identifier : (label or activator)
+                if (self.hasConditionAfterName()) {
                     return self.parseActivatorDeclaration();
                 } else {
                     return self.parseLabelStatement();
                 }
+            } else if (self.checkNext(.left_paren)) {
+                // Function case: identifier ( params ) :
+                const saved_pos = self.current;
+                _ = self.advance(); // Skip identifier
+                _ = self.advance(); // Skip (
+
+                // Skip parameters until )
+                var paren_depth: usize = 1;
+                while (!self.isAtEnd() and paren_depth > 0) {
+                    if (self.check(.left_paren)) {
+                        paren_depth += 1;
+                    } else if (self.check(.right_paren)) {
+                        paren_depth -= 1;
+                    }
+                    if (paren_depth > 0) {
+                        _ = self.advance();
+                    }
+                }
+
+                // Check if we have ) :
+                if (self.check(.right_paren) and self.checkAt(self.current + 1, .colon)) {
+                    self.current = saved_pos; // Restore position
+                    return self.parseFunctionDeclaration();
+                }
+
+                // Restore position if not a function
+                self.current = saved_pos;
             }
         }
 
@@ -530,14 +544,46 @@ pub const Parser = struct {
     fn parseStatementBlock(self: *Parser) ParseError![]Statement {
         var statements = std.ArrayList(Statement).init(self.allocator);
 
-        // Parse statements until we hit 'else' or 'end'
-        while (!self.check(.else_kw) and !self.check(.end_kw) and !self.isAtEnd()) {
-            // Skip newlines in block
-            if (self.match(.newline)) {
-                continue;
+        // Skip initial newlines and consume indentation
+        self.consumeNewlines();
+
+        // Check if we have indented statements
+        if (self.check(.indent)) {
+            const expected_indent = self.countIndentation();
+
+            while (!self.check(.else_kw) and !self.check(.end_kw) and !self.isAtEnd()) {
+                const current_indent = self.countIndentation();
+
+                // If indentation is less than expected, we've reached the end of this block
+                if (current_indent < expected_indent) {
+                    break;
+                }
+
+                // Consume the expected indentation tokens
+                var consumed_indent: usize = 0;
+                while (self.check(.indent) and consumed_indent < expected_indent) {
+                    _ = self.advance();
+                    consumed_indent += 1;
+                }
+
+                // Now parse the statement (no more INDENT tokens should be present)
+                const stmt = try self.parseStatement();
+                try statements.append(stmt);
+
+                // Only consume newlines, preserve indentation for next iteration
+                while (self.match(.newline)) {}
             }
-            const stmt = try self.parseStatement();
-            try statements.append(stmt);
+        } else {
+            // No indentation - parse statements on same line until else/end
+            while (!self.check(.else_kw) and !self.check(.end_kw) and !self.isAtEnd() and !self.checkNewlineOrSemicolon()) {
+                const stmt = try self.parseStatement();
+                try statements.append(stmt);
+                if (self.match(.semicolon)) {
+                    continue;
+                } else {
+                    break;
+                }
+            }
         }
 
         return statements.toOwnedSlice();
@@ -694,9 +740,11 @@ pub const Parser = struct {
     fn parseEquality(self: *Parser) ParseError!Expression {
         var expr = try self.parseComparison();
 
-        while (self.match(.equal) or self.match(.not_equal)) {
+
+        while (self.match(.equal) or self.match(.not_equal) or self.match(.assign)) {
             const operator = switch (self.previous().type) {
                 .equal => BinaryOperator.equal,
+                .assign => BinaryOperator.equal,  // Context-sensitive: = is equality in expressions
                 .not_equal => BinaryOperator.not_equal,
                 else => unreachable,
             };
@@ -1058,6 +1106,11 @@ pub const Parser = struct {
         return self.peek().type == token_type;
     }
 
+    fn checkAt(self: *Parser, position: usize, token_type: TokenType) bool {
+        if (position >= self.tokens.len) return false;
+        return self.tokens[position].type == token_type;
+    }
+
     fn checkNext(self: *Parser, token_type: TokenType) bool {
         if (self.current + 1 >= self.tokens.len) return false;
         return self.tokens[self.current + 1].type == token_type;
@@ -1138,6 +1191,7 @@ pub const Parser = struct {
     fn countIndentation(self: *Parser) usize {
         var count: usize = 0;
         var pos = self.current;
+
 
         // Count consecutive indent tokens
         while (pos < self.tokens.len and self.tokens[pos].type == .indent) {

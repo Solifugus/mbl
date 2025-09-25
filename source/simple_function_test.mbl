@@ -1,0 +1,6 @@
+program.write("Before function")
+
+testFunction():
+	program.write("Inside function")
+
+program.write("After function")
