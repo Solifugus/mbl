@@ -1,0 +1,15 @@
+# MBL Build Artifacts
+mbl_run
+*.o
+zig-cache/
+zig-out/
+
+# Development files
+junkyard/
+*.tmp
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo

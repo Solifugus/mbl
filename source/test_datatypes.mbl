@@ -1,0 +1,12 @@
+# Test different MBL data types
+name = "Alice"
+age = 25
+balance = $1500.75
+is_active = true
+score = 98.5
+
+program.write("Name: " + name)
+program.write("Age: " + age)
+program.write("Balance: " + balance)
+program.write("Active: " + is_active)
+program.write("Score: " + score)

@@ -1,0 +1,4 @@
+# Simple variable test
+name = "Alice"
+program.write("Hello")
+program.write(name)

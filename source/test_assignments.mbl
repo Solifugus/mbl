@@ -1,0 +1,10 @@
+# Test variable assignments
+x = 42
+name = "Alice"
+balance = $1000.50
+is_active = true
+
+# Test program.write with variables
+program.write("Testing assignments...")
+program.write("Name: " + name)
+program.write("Balance: " + balance)

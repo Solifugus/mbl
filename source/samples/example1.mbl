@@ -1,0 +1,182 @@
+# Comprehensive MBL Lexer Test Program
+# Tests every token type and syntax feature
+
+### Multi-line comment block
+This tests multi-line comments with ### delimiters
+Even with ## inside, it stays commented
+### End multi-line comment
+
+# Single line comment
+code_after_comment = 42 # inline comment # more code # another comment
+
+# Test all string literal variations
+simple_string = "Hello World"
+multiline_string = "This spans
+multiple lines
+of text"
+nested_quotes = ""This has "quotes" inside it""
+triple_quotes = """Even more "complex" quotes"""
+
+# Test all number formats
+integer = 42
+negative = -273
+decimal = 3.14159
+big_number = 1_000_000
+negative_decimal = -1_234.567_89
+underscore_number = 12_345_678.90_123
+
+# Test money literals
+basic_money = $19.95
+money_with_currency = $1500 USD
+foreign_money = $25.50 EUR
+big_money = $1_000_000 PESO
+
+# Test time literals - absolute times
+full_datetime = @2025-07-29 15:30:45
+date_only = @2025-12-25
+month_year = @2025-06
+year_only = @2025
+current_time = @now
+
+# Test time literals - durations
+long_duration = @17:45:30
+short_duration = @2:15
+hour_only = @8:00
+
+# Test boolean literals
+is_active = true
+is_complete = false
+
+# Test special values
+empty_value = Nothing
+error_value = Unknown
+quote_char = quote
+
+# Test identifiers and keywords
+customer_name = "John Doe"
+total_amount = balance + tax
+if balance > $100 and status = "active":
+	while counter < 10:
+		counter += 1
+		if counter = 5: goto skip_section
+		program.write("Processing: " + counter)
+
+skip_section:
+	return total_amount
+
+# Test all operators
+arithmetic = 10 + 5 - 3 * 2 / 4 % 3
+comparison = (x > 5) and (y <= 10) or (z != 0)
+assignment = value
+inequality = amount >= $50
+equality_check = status = "approved"
+logical_ops = not (finished and validated)
+
+# Test all delimiters and punctuation
+array = [1, 2, 3, "four", true, $5.00]
+record = {
+	id: 123,
+	name: "Product",
+	price: $29.99,
+	tags: ["electronics", "gadgets"],
+	metadata: {
+		created: @2025-01-15,
+		active: true
+	}
+}
+
+# Test property and index access
+customer_balance = customer.account.balance
+first_item = inventory[0]
+property_by_string = record["dynamic key"]
+nested_access = data.users[user_id].profile.email
+
+# Test function declarations
+calculate_tax(amount, rate = 0.08):
+	base_tax = amount * rate
+	if amount > $1000: base_tax *= 1.1
+	return base_tax
+
+process_order(customer, items, discount = $0):
+	total = sum(items)
+	tax = calculate_tax(total)
+	final_amount = total + tax - discount
+	customer.balance -= final_amount
+	return final_amount
+
+# Test activator declarations
+low_inventory_alert stock.quantity < 10:
+	program.write("Warning: Low stock for " + stock.item_name)
+	program.file_write("alerts.log", "Low stock: " + stock.item_name)
+
+complex_business_rule (order.amount > $500) and (customer.status = "premium") and not customer.blocked:
+	discount = order.amount * 0.15
+	order.final_price = order.amount - discount
+	program.write("Applied premium discount: $" + discount)
+
+# Test semicolon statement separation
+x = 10; y = 20; z = x + y
+if z > 25: program.write("Large sum"); total += z; count += 1
+
+# Test indentation levels
+if customer.vip_status:
+	if order.amount > $1000:
+		discount_rate = 0.20
+		if customer.years_member > 5:
+			discount_rate = 0.25
+			program.write("Super VIP discount applied")
+	else:
+		discount_rate = 0.10
+
+# Test mixed expressions with all token types
+result = calculate_tax($1_250.75 + bonus, rate) * factor - @2:30 + quote
+complex_condition = (balance >= $minimum) and (status != "blocked") or (override = true)
+
+# Test program built-ins and scope keywords
+user_input = program.read
+program.write("Welcome: " + user_input)
+config_data = program.file_read("config.txt")
+api_response = program.network_get("https://api.example.com/rates")
+
+# Test super keyword in nested scope
+process_payment(amount):
+	local_fee = amount * 0.03
+	super.total_fees += local_fee
+	program.total_processed += amount
+	return amount - local_fee
+
+# Test edge cases and combinations
+edge_case_money = $0.01 BTC
+scientific_time = @1735689600
+unicode_string = "Café naïve résumé 中文 🌟"
+mixed_expression = len("test") + max([1, 2, 3]) - typeof(balance) + sum(prices)
+
+# Test all string methods
+cleaned_email = email.lower().replace(" ", "")
+name_parts = full_name.split(" ")
+formatted_output = "Hello " + quote + customer.name.upper() + quote
+
+# Test final complex scenario
+main_business_logic:
+	customer_data = program.file_read("customers.csv").split("\n")
+	for line in customer_data:
+		fields = line.split(",")
+		customer = {
+			id: fields[0],
+			name: fields[1],
+			balance: $fields[2],
+			status: fields[3]
+		}
+
+		if customer.balance < $0:
+			program.write("Overdue: " + customer.name)
+			goto send_notice
+		else:
+			process_regular_customer(customer)
+
+	return "Processing complete"
+
+send_notice:
+	program.network_post("https://notices.example.com", customer_data)
+	program.file_write("overdue.log", customer.name + " is overdue")
+	goto main_business_logic

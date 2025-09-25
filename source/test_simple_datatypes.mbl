@@ -1,0 +1,12 @@
+# Test individual data type outputs
+name = "Alice Smith"
+age = 25
+balance = $1500.75
+is_active = true
+score = 98.5
+
+program.write(name)
+program.write(age)
+program.write(balance)
+program.write(is_active)
+program.write(score)
