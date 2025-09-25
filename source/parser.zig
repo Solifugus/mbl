@@ -640,7 +640,8 @@ pub const Parser = struct {
     }
 
     fn parseAssignmentOrExpression(self: *Parser) ParseError!Statement {
-        const expr = try self.parseExpression();
+        // Parse assignment target (identifier or property access) without evaluating
+        const target = try self.parseAssignmentTarget();
 
         // Check if this is an assignment
         if (self.match(.assign)) {
@@ -648,13 +649,64 @@ pub const Parser = struct {
             self.consumeStatementEnd();
 
             return Statement{ .assignment = Assignment{
-                .target = expr,
+                .target = target,
                 .value = value,
             }};
         } else {
+            // Not an assignment, treat the target as a regular expression
+            // We need to be careful here - the target was parsed as a limited expression
             self.consumeStatementEnd();
-            return Statement{ .expression_stmt = ExpressionStatement{ .expression = expr }};
+            return Statement{ .expression_stmt = ExpressionStatement{ .expression = target }};
         }
+    }
+
+    fn parseAssignmentTarget(self: *Parser) ParseError!Expression {
+        // Parse potential assignment targets: identifiers, property access, etc.
+        // This is similar to parsePrimary but more limited
+        if (self.match(.identifier)) {
+            const name = try self.allocator.dupe(u8, self.previous().lexeme);
+            var expr = Expression{ .identifier = Identifier{ .name = name }};
+
+            // Handle property access
+            while (self.match(.dot)) {
+                const prop_name = try self.consume(.identifier, "Expected property name after '.'");
+                const property = try self.allocator.dupe(u8, prop_name.lexeme);
+
+                const object_ptr = try self.allocator.create(Expression);
+                object_ptr.* = expr;
+
+                expr = Expression{ .property_access = PropertyAccess{
+                    .object = object_ptr,
+                    .property = property,
+                }};
+            }
+
+            return expr;
+        }
+
+        if (self.match(.program_kw)) {
+            const name = try self.allocator.dupe(u8, "program");
+            var expr = Expression{ .identifier = Identifier{ .name = name }};
+
+            // Handle property access
+            while (self.match(.dot)) {
+                const prop_name = try self.consume(.identifier, "Expected property name after '.'");
+                const property = try self.allocator.dupe(u8, prop_name.lexeme);
+
+                const object_ptr = try self.allocator.create(Expression);
+                object_ptr.* = expr;
+
+                expr = Expression{ .property_access = PropertyAccess{
+                    .object = object_ptr,
+                    .property = property,
+                }};
+            }
+
+            return expr;
+        }
+
+        // If not a simple assignment target, parse as full expression
+        return self.parseLogicalOr();
     }
 
     fn parseBlock(self: *Parser) ParseError![]Statement {
@@ -741,10 +793,9 @@ pub const Parser = struct {
         var expr = try self.parseComparison();
 
 
-        while (self.match(.equal) or self.match(.not_equal) or self.match(.assign)) {
+        while (self.match(.equal) or self.match(.not_equal)) {
             const operator = switch (self.previous().type) {
                 .equal => BinaryOperator.equal,
-                .assign => BinaryOperator.equal,  // Context-sensitive: = is equality in expressions
                 .not_equal => BinaryOperator.not_equal,
                 else => unreachable,
             };

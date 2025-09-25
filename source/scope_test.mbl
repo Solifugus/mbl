@@ -1,0 +1,24 @@
+# MBL v0.4.0 Variable Scoping Test
+program.write("=== Variable Scoping Test ===")
+
+# Program-level variable
+program_var = "I'm in program scope"
+program.write("Program var: " + program_var)
+
+# Test if-block local scope
+if 1 = 1 then
+	local_var = "I'm local to if block"
+	program.write("Local var: " + local_var)
+
+	# Access program variable from local scope
+	program.write("Access program from local: " + program_var)
+
+	# Explicit program scope access
+	program.total = 100
+	program.write("Program total: " + program.total)
+end
+
+# Try to access local variable from program scope (should be undefined)
+program.write("Local var from program scope: " + local_var)
+
+program.write("=== Test completed! ===")

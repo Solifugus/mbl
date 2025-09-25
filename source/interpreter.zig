@@ -21,6 +21,7 @@ pub const Interpreter = struct {
     output: std.ArrayList(u8),
     labels: std.HashMap([]const u8, usize, std.hash_map.StringContext, std.hash_map.default_max_load_percentage),
     goto_target: ?[]const u8, // Track the target of a goto that was executed
+    scope_stack: std.ArrayList(*memory.Record), // Stack of local scopes (deepest first)
 
     pub fn init(allocator: std.mem.Allocator, mem: *Memory) Interpreter {
         return Interpreter{
@@ -29,12 +30,82 @@ pub const Interpreter = struct {
             .output = std.ArrayList(u8).init(allocator),
             .labels = std.HashMap([]const u8, usize, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(allocator),
             .goto_target = null,
+            .scope_stack = std.ArrayList(*memory.Record).init(allocator),
         };
     }
 
     pub fn deinit(self: *Interpreter) void {
         self.output.deinit();
         self.labels.deinit();
+        self.scope_stack.deinit();
+    }
+
+    // Scope management methods
+    pub fn pushScope(self: *Interpreter, scope: *memory.Record) !void {
+        try self.scope_stack.append(scope);
+        std.log.info("📦 Pushed scope, depth now: {}", .{self.scope_stack.items.len});
+    }
+
+    pub fn popScope(self: *Interpreter) void {
+        if (self.scope_stack.items.len > 0) {
+            _ = self.scope_stack.pop();
+            std.log.info("📤 Popped scope, depth now: {}", .{self.scope_stack.items.len});
+        }
+    }
+
+    // Variable resolution with scope chain
+    pub fn getVariable(self: *Interpreter, name: []const u8) ?MBLValue {
+        // First check local scopes (deepest first)
+        var i: usize = self.scope_stack.items.len;
+        while (i > 0) {
+            i -= 1;
+            const scope = self.scope_stack.items[i];
+            if (scope.data.get(name)) |value| {
+                std.log.info("🔍 Variable '{s}' found in local scope at depth {}", .{name, i});
+                return value;
+            }
+        }
+
+        // Then check program scope
+        if (self.memory.program.data.get(name)) |value| {
+            std.log.info("🔍 Variable '{s}' found in program scope", .{name});
+            return value;
+        }
+
+        std.log.warn("🔍 Variable '{s}' not found in any scope", .{name});
+        return null;
+    }
+
+    // Variable assignment with scope resolution
+    pub fn setVariable(self: *Interpreter, name: []const u8, value: MBLValue) !void {
+        // Check if variable exists in any local scope
+        var i: usize = self.scope_stack.items.len;
+        while (i > 0) {
+            i -= 1;
+            const scope = self.scope_stack.items[i];
+            if (scope.data.contains(name)) {
+                try scope.set(name, value);
+                std.log.info("📝 Updated variable '{s}' in local scope at depth {}", .{name, i});
+                return;
+            }
+        }
+
+        // Check if exists in program scope
+        if (self.memory.program.data.contains(name)) {
+            try self.memory.program.set(name, value);
+            std.log.info("📝 Updated variable '{s}' in program scope", .{name});
+            return;
+        }
+
+        // New variable - create in current local scope if available, otherwise program scope
+        if (self.scope_stack.items.len > 0) {
+            const current_scope = self.scope_stack.items[self.scope_stack.items.len - 1];
+            try current_scope.set(name, value);
+            std.log.info("📝 Created variable '{s}' in local scope at depth {}", .{name, self.scope_stack.items.len - 1});
+        } else {
+            try self.memory.program.set(name, value);
+            std.log.info("📝 Created variable '{s}' in program scope", .{name});
+        }
     }
 
     pub fn execute(self: *Interpreter, statements: []Statement) !void {
@@ -96,6 +167,7 @@ pub const Interpreter = struct {
     }
 
     fn executeStatement(self: *Interpreter, stmt: Statement) !void {
+        std.log.info("🚀 Executing statement type: {s}", .{@tagName(stmt)});
         switch (stmt) {
             .assignment => |assignment| {
                 try self.executeAssignment(assignment);
@@ -123,16 +195,56 @@ pub const Interpreter = struct {
     }
 
     fn executeAssignment(self: *Interpreter, assignment: parser.Assignment) !void {
+        std.log.info("🎯 Executing assignment...", .{});
         const value = try self.evaluateExpression(assignment.value);
+        std.log.info("🎯 Value evaluated successfully", .{});
 
-        // For now, only handle simple identifier assignments
-        if (assignment.target == .identifier) {
-            const var_name = assignment.target.identifier.name;
-            try self.memory.program.set(var_name, value);
-            std.log.info("  Assigned {s}", .{var_name});
-        } else {
-            std.log.warn("  Complex assignment targets not yet supported", .{});
+        switch (assignment.target) {
+            .identifier => |identifier| {
+                const var_name = identifier.name;
+                std.log.info("🎯 Assigning to identifier: {s}", .{var_name});
+                try self.setVariable(var_name, value);
+                std.log.info("  Assigned {s}", .{var_name});
+            },
+            .property_access => |prop_access| {
+                try self.assignToProperty(prop_access, value);
+            },
+            else => {
+                std.log.warn("  Complex assignment targets not yet supported", .{});
+            }
         }
+    }
+
+    fn assignToProperty(self: *Interpreter, prop_access: parser.PropertyAccess, value: MBLValue) !void {
+        // Handle scope resolution assignments with 'program' and 'super' keywords
+        if (prop_access.object.* == .identifier) {
+            const obj_name = prop_access.object.identifier.name;
+            const prop_name = prop_access.property;
+
+            if (std.mem.eql(u8, obj_name, "program")) {
+                // Direct assignment to program scope
+                try self.memory.program.set(prop_name, value);
+                std.log.info("📝 Assigned 'program.{s}'", .{prop_name});
+                return;
+            } else if (std.mem.eql(u8, obj_name, "super")) {
+                // Assignment to parent scope (one level up)
+                if (self.scope_stack.items.len > 1) {
+                    const parent_scope = self.scope_stack.items[self.scope_stack.items.len - 2];
+                    if (parent_scope.data.contains(prop_name)) {
+                        try parent_scope.set(prop_name, value);
+                        std.log.info("📝 Assigned 'super.{s}' in parent scope", .{prop_name});
+                        return;
+                    }
+                }
+                // If not found in parent, assign to program scope
+                try self.memory.program.set(prop_name, value);
+                std.log.info("📝 Assigned 'super.{s}' (fallback to program)", .{prop_name});
+                return;
+            }
+        }
+
+        // For other property assignments, evaluate object and set property
+        std.log.warn("  Property assignment to non-scope objects not yet supported", .{});
     }
 
     fn evaluateExpression(self: *Interpreter, expr: Expression) !MBLValue {
@@ -141,12 +253,15 @@ pub const Interpreter = struct {
                 return try self.evaluateLiteral(literal);
             },
             .identifier => |identifier| {
-                if (self.memory.program.data.get(identifier.name)) |value| {
+                if (self.getVariable(identifier.name)) |value| {
                     return value;
                 } else {
                     std.log.warn("  Undefined variable: {s}", .{identifier.name});
                     return MBLValue{ .text = try memory.Text.init(self.allocator, "undefined") };
                 }
+            },
+            .property_access => |prop_access| {
+                return try self.evaluatePropertyAccess(prop_access);
             },
             .call => |call_expr| {
                 return try self.evaluateCall(call_expr);
@@ -557,12 +672,75 @@ pub const Interpreter = struct {
         };
     }
 
+    fn evaluatePropertyAccess(self: *Interpreter, prop_access: parser.PropertyAccess) !MBLValue {
+        // Handle scope resolution with 'program' and 'super' keywords
+        if (prop_access.object.* == .identifier) {
+            const obj_name = prop_access.object.identifier.name;
+            const prop_name = prop_access.property;
+
+            if (std.mem.eql(u8, obj_name, "program")) {
+                // Direct access to program scope
+                if (self.memory.program.data.get(prop_name)) |value| {
+                    std.log.info("🔍 Variable '{s}' accessed via program scope", .{prop_name});
+                    return value;
+                } else {
+                    std.log.warn("🔍 Variable 'program.{s}' not found", .{prop_name});
+                    return MBLValue{ .text = try memory.Text.init(self.allocator, "undefined") };
+                }
+            } else if (std.mem.eql(u8, obj_name, "super")) {
+                // Access to parent scope (one level up)
+                if (self.scope_stack.items.len > 1) {
+                    const parent_scope = self.scope_stack.items[self.scope_stack.items.len - 2];
+                    if (parent_scope.data.get(prop_name)) |value| {
+                        std.log.info("🔍 Variable '{s}' accessed via super scope", .{prop_name});
+                        return value;
+                    }
+                }
+                // If not found in parent, check program scope
+                if (self.memory.program.data.get(prop_name)) |value| {
+                    std.log.info("🔍 Variable '{s}' accessed via super (fallback to program)", .{prop_name});
+                    return value;
+                } else {
+                    std.log.warn("🔍 Variable 'super.{s}' not found", .{prop_name});
+                    return MBLValue{ .text = try memory.Text.init(self.allocator, "undefined") };
+                }
+            }
+        }
+
+        // For other property access, evaluate the object and access its properties
+        const obj_value = try self.evaluateExpression(prop_access.object.*);
+
+        // Handle record property access
+        switch (obj_value) {
+            .record => |record| {
+                if (record.data.get(prop_access.property)) |value| {
+                    return value;
+                } else {
+                    std.log.warn("  Property '{s}' not found on record", .{prop_access.property});
+                    return MBLValue{ .text = try memory.Text.init(self.allocator, "undefined") };
+                }
+            },
+            else => {
+                std.log.warn("  Cannot access property '{s}' on non-record value", .{prop_access.property});
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "undefined") };
+            }
+        }
+    }
+
     fn executeIfStatement(self: *Interpreter, if_stmt: parser.IfStatement) anyerror!void {
         const condition_value = try self.evaluateExpression(if_stmt.condition);
         const condition_truthy = self.isTruthy(condition_value);
 
         if (condition_truthy) {
             std.log.info("🔀 If condition is true, executing then branch", .{});
+
+            // Create local scope for if-block
+            var local_scope = memory.Record.init(self.allocator);
+            defer local_scope.deinit();
+
+            try self.pushScope(&local_scope);
+            defer self.popScope();
+
             for (if_stmt.then_branch) |stmt| {
                 if (self.executeStatement(stmt)) |_| {
                     // Statement executed normally
@@ -577,6 +755,14 @@ pub const Interpreter = struct {
         } else {
             if (if_stmt.else_branch) |else_branch| {
                 std.log.info("🔀 If condition is false, executing else branch", .{});
+
+                // Create local scope for else-block
+                var local_scope = memory.Record.init(self.allocator);
+                defer local_scope.deinit();
+
+                try self.pushScope(&local_scope);
+                defer self.popScope();
+
                 for (else_branch) |stmt| {
                     if (self.executeStatement(stmt)) |_| {
                         // Statement executed normally
