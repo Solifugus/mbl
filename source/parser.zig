@@ -189,6 +189,7 @@ pub const Literal = union(enum) {
     nothing: void,
     unknown: void,
     quote: void,
+    empty: void,
 
     pub fn deinit(self: *Literal, allocator: std.mem.Allocator) void {
         switch (self.*) {
@@ -878,6 +879,9 @@ pub const Parser = struct {
         }
         if (self.match(.quote_kw)) {
             return Expression{ .literal = Literal{ .quote = {} }};
+        }
+        if (self.match(.empty_kw)) {
+            return Expression{ .literal = Literal{ .empty = {} }};
         }
 
         if (self.match(.number)) {

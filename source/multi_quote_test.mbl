@@ -1,0 +1,8 @@
+single = "Single quote string"
+double = ""Double quote string""
+triple = """Triple quote string"""
+embedded = ""Say "Hello" please""
+program.write(single)
+program.write(double)
+program.write(triple)
+program.write(embedded)

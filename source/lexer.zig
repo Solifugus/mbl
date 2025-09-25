@@ -57,6 +57,7 @@ pub const TokenType = enum {
     quote_kw,       // quote
     nothing_kw,     // Nothing
     unknown_kw,     // Unknown
+    empty_kw,       // empty
 
     // Special
     newline,
@@ -111,6 +112,7 @@ pub const TokenType = enum {
             .quote_kw => "quote",
             .nothing_kw => "Nothing",
             .unknown_kw => "Unknown",
+            .empty_kw => "empty",
             .newline => "NEWLINE",
             .indent => "INDENT",
             .eof => "EOF",
@@ -238,7 +240,13 @@ pub const Lexer = struct {
                     return LexError.InvalidCharacter;
                 }
             },
-            '=' => self.makeToken(.assign), // Context will determine if it's comparison
+            '=' => {
+                if (self.match('=')) {
+                    return self.makeToken(.equal);
+                } else {
+                    return self.makeToken(.assign);
+                }
+            },
             '<' => {
                 if (self.match('=')) {
                     return self.makeToken(.less_equal);
@@ -387,14 +395,17 @@ pub const Lexer = struct {
     }
 
     fn scanString(self: *Lexer) LexError!Token {
-        // Count initial quote symbols
+        // Count consecutive opening quotes (we've already consumed the first one)
         var quote_count: usize = 1;
         while (self.peek() == '"') {
             quote_count += 1;
             _ = self.advance();
         }
 
-        // Scan until we find matching quotes
+        // For quote_count = 1: single quote strings like "text"
+        // For quote_count > 1: multi-quote strings like ""text"" or """text"""
+
+        // Scan until we find matching closing quotes
         var found_count: usize = 0;
         while (!self.isAtEnd()) {
             if (self.peek() == '"') {
@@ -543,6 +554,7 @@ pub const Lexer = struct {
             .{ "quote", .quote_kw },
             .{ "Nothing", .nothing_kw },
             .{ "Unknown", .unknown_kw },
+            .{ "empty", .empty_kw },
         });
 
         return keywords.get(text) orelse .identifier;
