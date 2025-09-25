@@ -1,0 +1,12 @@
+# Test goto with if statements
+program.write("Starting test")
+counter = 1
+
+beginloop:
+program.write("Counter is " + counter)
+if counter < 3 then
+    counter = counter + 1
+    goto beginloop
+end
+
+program.write("Loop finished")

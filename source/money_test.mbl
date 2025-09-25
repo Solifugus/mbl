@@ -1,0 +1,4 @@
+price1 = $100.00
+price2 = $25.50
+total = price1 + price2
+program.write("Total: " + total)

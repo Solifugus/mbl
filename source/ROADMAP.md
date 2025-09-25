@@ -8,23 +8,30 @@
 - [x] Lexer → Parser → AST → Interpreter pipeline
 - [x] Build system and documentation
 
-## 🎯 v0.2.0 - String & Math Operations
-- [ ] String concatenation: `"Name: " + name` support
-- [ ] Basic math operators: `+`, `-`, `*`, `/` for numbers
-- [ ] Money arithmetic: `$100.00 + $50.00` calculations
-- [ ] Comparison operators: `==`, `!=`, `<`, `>`, `<=`, `>=`
-- [ ] Type coercion: Smart conversion between compatible types
-- [ ] Enhanced error messages for type mismatches
+## ✅ v0.2.0 - String & Math Operations (COMPLETE)
+- [x] String concatenation: `"Name: " + name` support
+- [x] Basic math operators: `+`, `-`, `*`, `/` for numbers
+- [x] Money arithmetic: `$100.00 + $50.00` calculations
+- [x] Comparison operators: `==`, `!=`, `<`, `>`, `<=`, `>=`
+- [x] Type coercion: Smart conversion between compatible types
+- [x] Enhanced error messages for type mismatches
+- [x] Recursive arithmetic expressions with parentheses
+- [x] Multi-quote string system and empty keyword
 
-## 🔮 v0.3.0 - Control Flow & Logic
-- [ ] If statements: `if condition then ... end`
-- [ ] Boolean logic operators: `and`, `or`, `not`
-- [ ] Nested conditions: Complex boolean expressions
+## ✅ v0.3.0 - Control Flow & Logic (COMPLETE)
+- [x] If statements: `if condition then ... end`
+- [x] Boolean logic operators: `and`, `or`, `not`
+- [x] Nested conditions: Complex boolean expressions
+- [x] Unary operators: `-` for numbers, `not` for booleans
+- [x] Enhanced runtime error handling
+
+## 🏗️ v0.4.0 - Advanced Language Structure
+- [ ] Block statement parsing: Proper indentation-based syntax
 - [ ] Variable scoping: Local vs program-level variables
-- [ ] Improved runtime error handling
-- [ ] Block statement parsing
+- [ ] Nested scope management: Function and block-level scoping
+- [ ] Scope resolution: `super` and `program` keyword functionality
 
-## ⏰ v0.4.0 - Time & Advanced Data Types
+## ⏰ v0.5.0 - Time & Advanced Data Types
 - [ ] Time literals: `@2020-05-15`, `@14:30:00` support
 - [ ] Time operations: Date arithmetic, formatting
 - [ ] Duration types: `3 days`, `2 hours 30 minutes`
@@ -32,7 +39,7 @@
 - [ ] Record types: Structured data containers
 - [ ] List/array data type
 
-## 🔄 v0.5.0 - Loops & Iteration
+## 🔄 v0.6.0 - Loops & Iteration
 - [ ] For loops: `for item in collection`
 - [ ] While loops: `while condition do ... end`
 - [ ] List operations: Create, access, modify lists
@@ -40,7 +47,7 @@
 - [ ] Loop control: `break`, `continue` statements
 - [ ] Iterator protocol
 
-## 🎭 v0.6.0 - Functions & Procedures
+## 🎭 v0.7.0 - Functions & Procedures
 - [ ] Function definitions: `function calculate(x, y) ... end`
 - [ ] Return values: Support for function return types
 - [ ] Parameter validation: Type checking for function arguments
@@ -48,7 +55,7 @@
 - [ ] Procedure calls: Functions without return values
 - [ ] Function scoping and closures
 
-## ⚡ v0.7.0 - Activators & Reactive Programming
+## ⚡ v0.8.0 - Activators & Reactive Programming
 - [ ] Activator syntax: `when condition becomes true do ... end`
 - [ ] Event triggers: Respond to data changes
 - [ ] Condition monitoring: Continuous evaluation
@@ -56,7 +63,7 @@
 - [ ] Business rules: Automated policy enforcement
 - [ ] Prevent infinite activation loops
 
-## 📁 v0.8.0 - I/O & External Data
+## 📁 v0.9.0 - I/O & External Data
 - [ ] File operations: `program.read("file.txt")`, `program.write_file()`
 - [ ] CSV support: Read/write business data files
 - [ ] JSON integration: Parse and generate JSON data
@@ -64,7 +71,7 @@
 - [ ] Database connections: Simple query capabilities
 - [ ] Configuration file support
 
-## 🚀 v0.9.0 - Advanced Features
+## 🚀 v0.10.0 - Advanced Features
 - [ ] Error handling: `try/catch` blocks
 - [ ] Multi-line comment blocks: `### ... ###`
 - [ ] Code organization: Import/export between files
@@ -105,6 +112,6 @@ When starting a new version:
 9. [ ] Tag release: `git tag v0.x.0`
 10. [ ] Update ROADMAP.md with completed items
 
-## 🎯 Current Priority: v0.2.0
+## 🎯 Current Priority: v0.4.0
 
-The next version should focus on making the existing test file `test_datatypes.mbl` work properly by implementing string concatenation and basic expressions.
+The next version focuses on advanced language structure, implementing proper block statement parsing with indentation and comprehensive variable scoping.

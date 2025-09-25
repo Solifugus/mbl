@@ -12,34 +12,87 @@ pub const InterpreterError = error{
     TypeError,
     DivisionByZero,
     OutOfMemory,
+    GotoExecuted, // Special error to signal goto was executed
 };
 
 pub const Interpreter = struct {
     memory: *Memory,
     allocator: std.mem.Allocator,
     output: std.ArrayList(u8),
+    labels: std.HashMap([]const u8, usize, std.hash_map.StringContext, std.hash_map.default_max_load_percentage),
+    goto_target: ?[]const u8, // Track the target of a goto that was executed
 
     pub fn init(allocator: std.mem.Allocator, mem: *Memory) Interpreter {
         return Interpreter{
             .memory = mem,
             .allocator = allocator,
             .output = std.ArrayList(u8).init(allocator),
+            .labels = std.HashMap([]const u8, usize, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(allocator),
+            .goto_target = null,
         };
     }
 
     pub fn deinit(self: *Interpreter) void {
         self.output.deinit();
+        self.labels.deinit();
     }
 
     pub fn execute(self: *Interpreter, statements: []Statement) !void {
         std.log.info("🔥 Executing {} MBL statements...", .{statements.len});
 
+        // First pass: collect all labels
         for (statements, 0..) |stmt, i| {
-            try self.executeStatement(stmt);
-            std.log.info("✓ Statement {} completed", .{i + 1});
+            if (stmt == .label) {
+                try self.labels.put(stmt.label.name, i);
+                std.log.info("📍 Found label '{s}' at statement {}", .{stmt.label.name, i});
+            }
         }
 
-        std.log.info("✅ All {} statements executed successfully", .{statements.len});
+        // Second pass: execute statements with goto support
+        var pc: usize = 0; // program counter
+        while (pc < statements.len) {
+            const stmt = statements[pc];
+
+            if (stmt == .goto_stmt) {
+                // Handle goto
+                const target = stmt.goto_stmt.target;
+                if (self.labels.get(target)) |label_pc| {
+                    std.log.info("🔄 GOTO '{s}' - jumping from {} to {}", .{target, pc, label_pc});
+                    pc = label_pc;
+                    continue;
+                } else {
+                    std.log.err("❌ Label '{s}' not found for goto", .{target});
+                    return InterpreterError.TypeError; // Could add specific GotoError
+                }
+            } else {
+                if (self.executeStatement(stmt)) |_| {
+                    std.log.info("✓ Statement {} completed", .{pc + 1});
+                } else |err| switch (err) {
+                    InterpreterError.GotoExecuted => {
+                        // A goto was executed from within this statement
+                        if (self.goto_target) |target| {
+                            if (self.labels.get(target)) |label_pc| {
+                                std.log.info("🔄 GOTO '{s}' from nested statement - jumping to {}", .{target, label_pc});
+                                pc = label_pc;
+                                self.goto_target = null; // Clear the goto target
+                                continue;
+                            } else {
+                                std.log.err("❌ Label '{s}' not found for goto", .{target});
+                                return InterpreterError.TypeError;
+                            }
+                        } else {
+                            std.log.err("❌ Goto executed but no target set", .{});
+                            return InterpreterError.TypeError;
+                        }
+                    },
+                    else => return err,
+                }
+            }
+
+            pc += 1;
+        }
+
+        std.log.info("✅ All statements executed successfully", .{});
     }
 
     fn executeStatement(self: *Interpreter, stmt: Statement) !void {
@@ -49,6 +102,19 @@ pub const Interpreter = struct {
             },
             .expression_stmt => |expr_stmt| {
                 _ = try self.evaluateExpression(expr_stmt.expression);
+            },
+            .if_statement => |if_stmt| {
+                try self.executeIfStatement(if_stmt);
+            },
+            .label => |label| {
+                // Labels are no-ops during execution (handled in label discovery phase)
+                std.log.info("📍 Label '{s}' reached", .{label.name});
+            },
+            .goto_stmt => |goto_stmt| {
+                // Set the goto target and signal that a goto was executed
+                self.goto_target = goto_stmt.target;
+                std.log.info("🔄 GOTO '{s}' executed from nested statement", .{goto_stmt.target});
+                return InterpreterError.GotoExecuted;
             },
             else => {
                 std.log.warn("Statement type {s} not yet supported", .{@tagName(stmt)});
@@ -87,6 +153,9 @@ pub const Interpreter = struct {
             },
             .binary => |binary_expr| {
                 return try self.evaluateBinaryExpression(binary_expr);
+            },
+            .unary => |unary_expr| {
+                return try self.evaluateUnaryExpression(unary_expr);
             },
             else => {
                 std.log.warn("  Expression type {s} not yet supported", .{@tagName(expr)});
@@ -467,5 +536,61 @@ pub const Interpreter = struct {
             .money => |m| m.value != 0,
             else => true, // Other types are considered truthy
         };
+    }
+
+    fn evaluateUnaryExpression(self: *Interpreter, unary_expr: parser.UnaryExpression) anyerror!MBLValue {
+        const operand = try self.evaluateExpression(unary_expr.operand.*);
+
+        return switch (unary_expr.operator) {
+            .minus => {
+                switch (operand) {
+                    .number => |num| {
+                        return MBLValue{ .number = memory.Number{ .value = -num.value } };
+                    },
+                    else => return error.TypeError,
+                }
+            },
+            .logical_not => {
+                const is_truthy = self.isTruthy(operand);
+                return MBLValue{ .boolean = memory.Boolean{ .value = !is_truthy } };
+            },
+        };
+    }
+
+    fn executeIfStatement(self: *Interpreter, if_stmt: parser.IfStatement) anyerror!void {
+        const condition_value = try self.evaluateExpression(if_stmt.condition);
+        const condition_truthy = self.isTruthy(condition_value);
+
+        if (condition_truthy) {
+            std.log.info("🔀 If condition is true, executing then branch", .{});
+            for (if_stmt.then_branch) |stmt| {
+                if (self.executeStatement(stmt)) |_| {
+                    // Statement executed normally
+                } else |err| switch (err) {
+                    InterpreterError.GotoExecuted => {
+                        // Propagate the goto up to the main execution loop
+                        return InterpreterError.GotoExecuted;
+                    },
+                    else => return err,
+                }
+            }
+        } else {
+            if (if_stmt.else_branch) |else_branch| {
+                std.log.info("🔀 If condition is false, executing else branch", .{});
+                for (else_branch) |stmt| {
+                    if (self.executeStatement(stmt)) |_| {
+                        // Statement executed normally
+                    } else |err| switch (err) {
+                        InterpreterError.GotoExecuted => {
+                            // Propagate the goto up to the main execution loop
+                            return InterpreterError.GotoExecuted;
+                        },
+                        else => return err,
+                    }
+                }
+            } else {
+                std.log.info("🔀 If condition is false, no else branch", .{});
+            }
+        }
     }
 };

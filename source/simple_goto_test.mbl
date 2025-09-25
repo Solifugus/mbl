@@ -1,0 +1,7 @@
+# Simple Goto Test
+program.write("Before goto")
+goto mylabel
+program.write("This should be skipped")
+
+mylabel:
+program.write("At the label after goto")

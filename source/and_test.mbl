@@ -1,0 +1,6 @@
+age = 25
+total = $125.50
+is_adult = age >= 18
+has_money = total > $50.00
+result = is_adult and has_money
+program.write("Result: " + result)

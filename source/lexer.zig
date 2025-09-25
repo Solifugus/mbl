@@ -44,7 +44,9 @@ pub const TokenType = enum {
     // Keywords
     function_kw,    // function (implicit in syntax)
     if_kw,          // if
+    then_kw,        // then
     else_kw,        // else
+    end_kw,         // end
     while_kw,       // while
     for_kw,         // for
     in_kw,          // in
@@ -99,7 +101,9 @@ pub const TokenType = enum {
             .left_bracket => "[",
             .right_bracket => "]",
             .if_kw => "if",
+            .then_kw => "then",
             .else_kw => "else",
+            .end_kw => "end",
             .while_kw => "while",
             .for_kw => "for",
             .in_kw => "in",
@@ -541,7 +545,9 @@ pub const Lexer = struct {
             .{ "or", .or_kw },
             .{ "not", .not_kw },
             .{ "if", .if_kw },
+            .{ "then", .then_kw },
             .{ "else", .else_kw },
+            .{ "end", .end_kw },
             .{ "while", .while_kw },
             .{ "for", .for_kw },
             .{ "in", .in_kw },

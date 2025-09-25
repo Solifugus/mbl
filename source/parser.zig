@@ -520,24 +520,41 @@ pub const Parser = struct {
     }
 
     fn parseLabelStatement(self: *Parser) ParseError!Statement {
-        const name_token = try self.consume(.identifier, "Expected label name");
+        const name_token = try self.consumeLabelName("Expected label name");
         const name = try self.allocator.dupe(u8, name_token.lexeme);
         _ = try self.consume(.colon, "Expected ':' after label name");
 
         return Statement{ .label = LabelStatement{ .name = name }};
     }
 
+    fn parseStatementBlock(self: *Parser) ParseError![]Statement {
+        var statements = std.ArrayList(Statement).init(self.allocator);
+
+        // Parse statements until we hit 'else' or 'end'
+        while (!self.check(.else_kw) and !self.check(.end_kw) and !self.isAtEnd()) {
+            // Skip newlines in block
+            if (self.match(.newline)) {
+                continue;
+            }
+            const stmt = try self.parseStatement();
+            try statements.append(stmt);
+        }
+
+        return statements.toOwnedSlice();
+    }
+
     fn parseIfStatement(self: *Parser) ParseError!IfStatement {
         const condition = try self.parseExpression();
-        _ = try self.consume(.colon, "Expected ':' after if condition");
+        _ = try self.consume(.then_kw, "Expected 'then' after if condition");
 
-        const then_branch = try self.parseBlock();
+        const then_branch = try self.parseStatementBlock();
 
         var else_branch: ?[]Statement = null;
         if (self.match(.else_kw)) {
-            _ = try self.consume(.colon, "Expected ':' after else");
-            else_branch = try self.parseBlock();
+            else_branch = try self.parseStatementBlock();
         }
+
+        _ = try self.consume(.end_kw, "Expected 'end' to close if statement");
 
         return IfStatement{
             .condition = condition,
@@ -569,7 +586,7 @@ pub const Parser = struct {
     }
 
     fn parseGotoStatement(self: *Parser) ParseError!GotoStatement {
-        const target_token = try self.consume(.identifier, "Expected label name after goto");
+        const target_token = try self.consumeLabelName("Expected label name after goto");
         const target = try self.allocator.dupe(u8, target_token.lexeme);
         self.consumeStatementEnd();
 
@@ -1090,6 +1107,28 @@ pub const Parser = struct {
         if (self.isAtEnd()) {
             return;
         }
+    }
+
+    fn consumeLabelName(self: *Parser, message: []const u8) ParseError!Token {
+        // Accept identifiers or keywords as label names
+        const current_token = self.peek();
+
+        // Check if it's an identifier
+        if (current_token.type == .identifier) {
+            return self.advance();
+        }
+
+        // Check if it's a keyword that can be used as a label
+        switch (current_token.type) {
+            .end_kw => {
+                return self.advance();
+            },
+            else => {},
+        }
+
+        // If neither identifier nor acceptable keyword, report error
+        std.log.err("{s}. Got '{s}' instead.", .{message, current_token.lexeme});
+        return ParseError.UnexpectedToken;
     }
 
     fn checkNewlineOrSemicolon(self: *Parser) bool {

@@ -1,0 +1,3 @@
+program.write("Before empty")
+program.write(empty)
+program.write("After empty")

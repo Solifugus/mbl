@@ -1,0 +1,3 @@
+has_discount = true
+money = $150.00
+if (has_discount and money > $100.00) then program.write("Both conditions true!") end
