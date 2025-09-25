@@ -833,12 +833,22 @@ pub const Parser = struct {
         if (self.checkNewlineOrSemicolon()) {
             // Multi-line block - expect indentation
             self.consumeNewlines();
-            const expected_indent = self.countIndentation() + 1;
+            const expected_indent = self.countIndentation();
 
             while (!self.isAtEnd() and self.countIndentation() >= expected_indent) {
+                // Consume the expected indentation tokens (like parseStatementBlock does)
+                var consumed_indent: usize = 0;
+                while (self.check(.indent) and consumed_indent < expected_indent) {
+                    _ = self.advance();
+                    consumed_indent += 1;
+                }
+
+                // Now parse the statement (no more INDENT tokens should be present)
                 const stmt = try self.parseStatement();
                 try statements.append(stmt);
-                self.skipWhitespace();
+
+                // Only consume newlines, preserve indentation for next iteration
+                while (self.match(.newline)) {}
             }
         } else {
             // Single line - parse statements until newline
