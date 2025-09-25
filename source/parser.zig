@@ -651,8 +651,17 @@ pub const Parser = struct {
     }
 
     fn parseAssignmentOrExpression(self: *Parser) ParseError!Statement {
-        // Parse assignment target (identifier or property access) without evaluating
-        const target = try self.parseAssignmentTarget();
+        // Save current position to potentially backtrack
+        const saved_pos = self.current;
+
+        // Try to parse as assignment target first
+        const target = self.parseAssignmentTarget() catch {
+            // If parsing as assignment target fails, reset and parse as full expression
+            self.current = saved_pos;
+            const expr = try self.parseExpression();
+            self.consumeStatementEnd();
+            return Statement{ .expression_stmt = ExpressionStatement{ .expression = expr }};
+        };
 
         // Check if this is an assignment
         if (self.match(.assign)) {
@@ -664,10 +673,18 @@ pub const Parser = struct {
                 .value = value,
             }};
         } else {
-            // Not an assignment, treat the target as a regular expression
-            // We need to be careful here - the target was parsed as a limited expression
-            self.consumeStatementEnd();
-            return Statement{ .expression_stmt = ExpressionStatement{ .expression = target }};
+            // Not an assignment - check if we have more tokens that need parsing (like method calls)
+            if (self.check(.left_paren) or self.check(.left_bracket)) {
+                // We have more to parse, so reset and parse as full expression
+                self.current = saved_pos;
+                const expr = try self.parseExpression();
+                self.consumeStatementEnd();
+                return Statement{ .expression_stmt = ExpressionStatement{ .expression = expr }};
+            } else {
+                // Simple identifier or property access, use what we have
+                self.consumeStatementEnd();
+                return Statement{ .expression_stmt = ExpressionStatement{ .expression = target }};
+            }
         }
     }
 

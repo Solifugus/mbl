@@ -7,7 +7,7 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    const source = "person = {\n    name: \"Alice\",\n    age: 30\n}";
+    const source = "program.write(\"hello\")";
 
     std.debug.print("Source ({d} chars): {s}\n", .{source.len, source});
     std.debug.print("Characters: ", .{});
