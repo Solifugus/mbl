@@ -342,7 +342,7 @@ pub const List = struct {
         try self.data.append(value);
     }
 
-    pub fn get(self: *List, index: usize) ?MBLValue {
+    pub fn get(self: *const List, index: usize) ?MBLValue {
         if (index < self.data.items.len) {
             return self.data.items[index];
         }
@@ -362,7 +362,7 @@ pub const List = struct {
         self.data.items[index] = value;
     }
 
-    pub fn len(self: *List) usize {
+    pub fn len(self: *const List) usize {
         return self.data.items.len;
     }
 };

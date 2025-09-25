@@ -1,0 +1,40 @@
+# List/Array Test - MBL v0.5.0
+
+# Basic list creation
+numbers = [1, 2, 3, 4, 5]
+names = ["Alice", "Bob", "Charlie"]
+mixed = [42, "hello", $100.00, true, 2 hours]
+
+program.write("Numbers: " + numbers)
+program.write("Names: " + names)
+program.write("Mixed: " + mixed)
+
+# List length/size access
+program.write("Numbers length: " + numbers.length)
+program.write("Names length: " + names.len)
+program.write("Mixed length: " + mixed.length)
+
+# List indexing (0-based)
+program.write("First number: " + numbers[0])
+program.write("Second number: " + numbers[1])
+program.write("Last number: " + numbers[4])
+
+program.write("First name: " + names[0])
+program.write("Second name: " + names[1])
+
+program.write("Mixed[0]: " + mixed[0])
+program.write("Mixed[1]: " + mixed[1])
+program.write("Mixed[2]: " + mixed[2])
+
+# Multi-line list
+shopping_list = [
+    "bread",
+    "milk",
+    "eggs",
+    "butter"
+]
+
+program.write("Shopping list: " + shopping_list)
+program.write("Shopping list length: " + shopping_list.length)
+program.write("First item: " + shopping_list[0])
+program.write("Last item: " + shopping_list[3])

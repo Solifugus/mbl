@@ -259,6 +259,9 @@ pub const Interpreter = struct {
             .property_access => |prop_access| {
                 return try self.evaluatePropertyAccess(prop_access);
             },
+            .index_access => |index_access| {
+                return try self.evaluateIndexAccess(index_access);
+            },
             .call => |call_expr| {
                 return try self.evaluateCall(call_expr);
             },
@@ -271,9 +274,8 @@ pub const Interpreter = struct {
             .record_literal => |record_literal| {
                 return try self.evaluateRecordLiteral(record_literal);
             },
-            else => {
-                std.log.warn("  Expression type {s} not yet supported", .{@tagName(expr)});
-                return MBLValue{ .text = try memory.Text.init(self.allocator, "unsupported") };
+            .list_literal => |list_literal| {
+                return try self.evaluateListLiteral(list_literal);
             },
         }
     }
@@ -454,6 +456,47 @@ pub const Interpreter = struct {
         return MBLValue{ .record = record };
     }
 
+    fn evaluateListLiteral(self: *Interpreter, list_literal: parser.ListLiteral) anyerror!MBLValue {
+        var list = memory.List.init(self.allocator);
+
+        for (list_literal.elements) |element| {
+            const value = try self.evaluateExpression(element);
+            try list.append(value);
+        }
+
+        return MBLValue{ .list = list };
+    }
+
+    fn evaluateIndexAccess(self: *Interpreter, index_access: parser.IndexAccess) anyerror!MBLValue {
+        const obj_value = try self.evaluateExpression(index_access.object.*);
+        const index_value = try self.evaluateExpression(index_access.index.*);
+
+        // Convert index to number
+        const index_num = switch (index_value) {
+            .number => |num| @as(usize, @intFromFloat(num.value)),
+            else => {
+                std.log.warn("  Index must be a number, got {s}", .{@tagName(index_value)});
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "invalid_index") };
+            }
+        };
+
+        // Handle list indexing
+        switch (obj_value) {
+            .list => |*list| {
+                if (list.get(index_num)) |value| {
+                    return value;
+                } else {
+                    std.log.warn("  List index {d} out of bounds", .{index_num});
+                    return MBLValue{ .text = try memory.Text.init(self.allocator, "index_out_of_bounds") };
+                }
+            },
+            else => {
+                std.log.warn("  Cannot index into {s}", .{@tagName(obj_value)});
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "not_indexable") };
+            }
+        }
+    }
+
     fn daysSinceEpoch(year: i32, month: u4, day: u5) i64 {
         // Simplified calculation - assumes Gregorian calendar
         // This is a basic implementation for demonstration
@@ -629,6 +672,13 @@ pub const Interpreter = struct {
                         // String concatenation: text + record
                         _ = right_record;
                         const right_str = "[Record]"; // Simple representation for now
+                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_text.data, right_str});
+                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
+                    },
+                    .list => |*right_list| {
+                        // String concatenation: text + list
+                        const right_str = try std.fmt.allocPrint(self.allocator, "[List with {d} elements]", .{right_list.len()});
+                        defer self.allocator.free(right_str);
                         const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_text.data, right_str});
                         return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
                     },
@@ -1023,6 +1073,15 @@ pub const Interpreter = struct {
                     return MBLValue{ .number = memory.Number{ .value = duration_value.seconds() } };
                 } else {
                     std.log.warn("  Property '{s}' not found on duration value", .{prop_access.property});
+                    return MBLValue{ .text = try memory.Text.init(self.allocator, "undefined") };
+                }
+            },
+            .list => |*list_value| {
+                // Handle list property access (length)
+                if (std.mem.eql(u8, prop_access.property, "length") or std.mem.eql(u8, prop_access.property, "len")) {
+                    return MBLValue{ .number = memory.Number{ .value = @floatFromInt(list_value.len()) } };
+                } else {
+                    std.log.warn("  Property '{s}' not found on list value", .{prop_access.property});
                     return MBLValue{ .text = try memory.Text.init(self.allocator, "undefined") };
                 }
             },

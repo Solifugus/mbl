@@ -1162,12 +1162,21 @@ pub const Parser = struct {
 
         if (!self.check(.right_bracket)) {
             while (true) {
+                // Skip any newlines
+                while (self.match(.newline)) {}
+
                 const element = try self.parseExpression();
                 try elements.append(element);
 
                 if (!self.match(.comma)) break;
+
+                // Skip any newlines after comma
+                while (self.match(.newline)) {}
             }
         }
+
+        // Skip any final newlines before closing bracket
+        while (self.match(.newline)) {}
 
         _ = try self.consume(.right_bracket, "Expected ']' after list elements");
 
