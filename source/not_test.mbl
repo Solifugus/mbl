@@ -1,4 +1,0 @@
-result = not true
-program.write("not true = " + result)
-result2 = not false  
-program.write("not false = " + result2)

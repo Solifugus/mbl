@@ -1,7 +1,0 @@
-# Test default parameter parsing
-greet(name, greeting = "Hello"):
-	message = greeting + " " + name
-	return message
-
-msg1 = greet("Alice")
-program.write("Message: " + msg1)

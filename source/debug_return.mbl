@@ -1,6 +1,0 @@
-# Test what exactly is returned by function
-test_func():
-	return "Hello World"
-
-result = test_func()
-program.write(result)

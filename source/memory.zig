@@ -145,6 +145,10 @@ pub const Time = struct {
         return Time{ .value = self.value + duration.value };
     }
 
+    pub fn addDuration(self: Time, duration: Duration) Time {
+        return Time{ .value = self.value + duration.value };
+    }
+
     pub fn subtract(self: Time, duration: Time) Time {
         return Time{ .value = self.value - duration.value };
     }
@@ -578,7 +582,7 @@ pub const MBLValue = union(enum) {
     }
 
     // Universal type conversion - all types can convert to/from text
-    pub fn convertToNumber(self: MBLValue, allocator: std.mem.Allocator) !MBLValue {
+    pub fn convertToNumber(self: MBLValue, _: std.mem.Allocator) !MBLValue {
         switch (self) {
             .number => return self,
             .boolean => |b| return MBLValue{ .number = b.toNumber() },
@@ -603,7 +607,7 @@ pub const MBLValue = union(enum) {
         }
     }
 
-    pub fn convertToBoolean(self: MBLValue, allocator: std.mem.Allocator) !MBLValue {
+    pub fn convertToBoolean(self: MBLValue, _: std.mem.Allocator) !MBLValue {
         switch (self) {
             .boolean => return self,
             .text => |t| {
@@ -643,6 +647,10 @@ pub const MBLValue = union(enum) {
                 .duration => |d2| return d1.value == d2.value,
                 else => return false,
             },
+            .unknown => switch (other) {
+                .unknown => return true,
+                else => return false,
+            },
             else => return false, // Records, lists, functions, activators need deep comparison
         }
     }
@@ -675,6 +683,7 @@ pub const MBLValue = union(enum) {
                 // Similar to functions, just reference copy for now
                 return MBLValue{ .activator = a };
             },
+            .unknown => return MBLValue{ .unknown = {} },
         }
     }
 };

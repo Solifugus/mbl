@@ -1,7 +1,0 @@
-# Test simple concatenation after function call
-test_func():
-	return "Hello World"
-
-result = test_func()
-program.write(result)
-program.write("Result: " + result)

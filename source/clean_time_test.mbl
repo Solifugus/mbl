@@ -1,9 +1,0 @@
-program.write("=== Time Literal Test ===")
-
-current_time = @now
-program.write("Current time: " + current_time)
-
-birthday = @2020-05-15
-program.write("Birthday: " + birthday)
-
-program.write("=== Test Complete ===")

@@ -1,7 +1,0 @@
-# Hello World Program
-program.write("Hello World!")
-str = "I can hold a text value"
-program.write( str )
-age = 55
-program.write( age )
-

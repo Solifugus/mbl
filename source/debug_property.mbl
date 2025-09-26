@@ -1,8 +1,0 @@
-# Test just the property access issue
-build_report(title):
-	report_title = title
-	item_count = 5
-	status = "completed"
-
-report = build_report("Monthly Sales")
-program.write("Report created: " + report.report_title)

@@ -1,8 +1,0 @@
-# Test string interpolation issue
-name = "Alice"
-msg = "Hello " + name
-program.write(msg)
-
-# Test more complex case
-value = "Test Result"
-program.write("Result: " + value)

@@ -1,8 +1,0 @@
-# Debug parse error - simplified test
-company_name = "TechCorp Inc"
-revenue = 1250000
-employees = 25
-
-# Test basic arithmetic (might be issue with parentheses)
-revenue_per_employee = revenue / employees
-program.write("Revenue per employee: " + revenue_per_employee)

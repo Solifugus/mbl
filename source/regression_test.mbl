@@ -1,9 +1,0 @@
-# Test assignment regression fix
-name = "Alice"
-age = 25
-active = true
-
-# Test variable access
-program.write("Name: " + name)
-program.write("Age: " + age)
-program.write("Active: " + active)

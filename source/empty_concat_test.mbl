@@ -1,2 +1,0 @@
-result = "Hello" + empty + "World"
-program.write(result)

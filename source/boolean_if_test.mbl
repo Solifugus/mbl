@@ -1,3 +1,0 @@
-has_discount = true
-if has_discount then program.write("Discount available!") end
-program.write("Test complete")

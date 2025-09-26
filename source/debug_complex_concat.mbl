@@ -1,8 +1,0 @@
-# Test complex concatenation
-company_name = "TechCorp Inc"
-revenue = 1250000
-employees = 25
-
-# Test complex concatenation
-status_message = company_name + " has " + employees + " employees and $" + revenue + " revenue"
-program.write(status_message)

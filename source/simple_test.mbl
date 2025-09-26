@@ -1,2 +1,0 @@
-name = "Alice"
-program.write(name)

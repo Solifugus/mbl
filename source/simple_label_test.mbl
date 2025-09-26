@@ -1,7 +1,0 @@
-# Simple Label Test
-program.write("Before label")
-
-mylabel:
-program.write("At the label")
-
-program.write("After label")

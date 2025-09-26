@@ -1,4 +1,0 @@
-money = $150.00
-has_discount = true
-if has_discount and money > $100.00 then program.write("Discount available!") end
-program.write("Test complete")

@@ -1,5 +1,0 @@
-has_discount = true
-money = $150.00
-result = has_discount and money > $100.00
-program.write("Condition result: " + result)
-if result then program.write("Both conditions true!") end

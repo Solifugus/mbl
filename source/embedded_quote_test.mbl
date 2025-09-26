@@ -1,2 +1,0 @@
-embedded = ""Say "Hello" please""
-program.write(embedded)

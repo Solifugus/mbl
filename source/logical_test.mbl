@@ -1,3 +1,0 @@
-age = 25
-is_adult = age >= 18
-program.write("Is adult: " + is_adult)

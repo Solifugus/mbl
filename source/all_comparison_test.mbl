@@ -1,6 +1,0 @@
-x = 15
-y = 10
-program.write("15 == 10: " + (x == y))
-program.write("15 != 10: " + (x != y))
-program.write("15 > 10: " + (x > y))
-program.write("15 < 10: " + (x < y))

@@ -1,7 +1,0 @@
-# Test complex binary expression
-test_complex(a, b):
-	result = a + " " + b
-	return result
-
-value = test_complex("Hello", "World")  
-program.write("Result: " + value)

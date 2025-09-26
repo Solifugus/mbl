@@ -1,7 +1,0 @@
-# Test property access after function call
-build_report(title):
-	report_title = title
-	item_count = 5
-
-report = build_report("Test")
-program.write("Title: " + report.report_title)

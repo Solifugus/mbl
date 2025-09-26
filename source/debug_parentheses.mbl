@@ -1,8 +1,0 @@
-# Test parentheses parsing
-a = 10
-b = 5
-c = 2
-
-# Test with parentheses
-result = (a - b) / c
-program.write("Result: " + result)

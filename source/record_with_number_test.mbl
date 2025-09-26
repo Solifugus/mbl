@@ -1,8 +1,0 @@
-person = {
-    name: "Alice",
-    age: 30
-}
-
-program.write("Person: " + person)
-program.write("Name: " + person.name)
-program.write("Age: " + person.age)

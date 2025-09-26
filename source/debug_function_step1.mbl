@@ -1,7 +1,0 @@
-# Test function with complex expressions - step 1
-calculate_growth_metrics(current_revenue, previous_revenue, name = "Unknown Company"):
-	growth_rate = (current_revenue - previous_revenue) / previous_revenue * 100
-	return growth_rate
-
-result = calculate_growth_metrics(1250000, 1000000, "TestCorp")
-program.write("Growth rate: " + result)
