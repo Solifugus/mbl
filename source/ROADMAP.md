@@ -92,8 +92,9 @@
 - [x] Business symbols: Copyright ©, trademark ™, registered ®, currency symbols
 - [x] Status symbols: Checkmarks ✓, X marks ✗, bullets •, arrows → ← ↑ ↓
 
-## 📁 v0.11.0 - I/O & External Data (PLANNED)
-- [ ] stdin/stderr: `program.read(delimiter)`, `program.error(msg)`
+## 📁 v0.11.0 - I/O & External Data (IN PROGRESS)
+- [x] stdin: `program.read(delimiter)` - Read from stdin with flexible delimiters
+- [ ] stderr: `program.error(msg)` - Write to stderr for error output
 - [ ] File operations: `program.file_read()`, `program.file_write()`
 - [ ] CSV support: Read/write business data files
 - [ ] JSON integration: Parse and generate JSON data

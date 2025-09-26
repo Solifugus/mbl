@@ -614,6 +614,9 @@ pub const Interpreter = struct {
                 if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "write")) {
                     return try self.handleProgramWrite(call_expr.arguments);
                 }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "read")) {
+                    return try self.handleProgramRead(call_expr.arguments);
+                }
                 if (std.mem.eql(u8, obj_name, "symbol") and std.mem.eql(u8, method_name, "unicode")) {
                     return try self.handleSymbolUnicode(call_expr.arguments);
                 }
@@ -705,6 +708,80 @@ pub const Interpreter = struct {
         const utf8_text = try self.allocator.dupe(u8, utf8_buffer[0..utf8_len]);
 
         return MBLValue{ .text = memory.Text{ .data = utf8_text } };
+    }
+
+    fn handleProgramRead(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len != 1) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "read() requires exactly one delimiter argument") };
+        }
+
+        const delimiter_value = self.evaluateExpression(arguments[0]) catch |err| {
+            std.log.warn("Error evaluating read delimiter: {!}", .{err});
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "error") };
+        };
+
+        // Get delimiters as list of strings
+        var delimiters = std.ArrayList([]const u8).init(self.allocator);
+        defer delimiters.deinit();
+
+        switch (delimiter_value) {
+            .text => |delimiter| {
+                // Single delimiter
+                try delimiters.append(delimiter.data);
+            },
+            .list => |delimiter_list| {
+                // Multiple delimiters
+                for (delimiter_list.data.items) |item| {
+                    if (item == .text) {
+                        try delimiters.append(item.text.data);
+                    }
+                }
+            },
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "read() delimiter must be text or list of text") };
+            },
+        }
+
+        // Read from stdin until delimiter found
+        const stdin = std.io.getStdIn().reader();
+        var input_buffer = std.ArrayList(u8).init(self.allocator);
+        defer input_buffer.deinit();
+
+        // Special case: empty delimiter means read all
+        if (delimiters.items.len == 1 and delimiters.items[0].len == 0) {
+            const all_input = try stdin.readAllAlloc(self.allocator, 1024 * 1024); // 1MB limit
+            return MBLValue{ .text = memory.Text{ .data = all_input } };
+        }
+
+        // Read character by character until delimiter found
+        while (true) {
+            const byte = stdin.readByte() catch |err| {
+                if (err == error.EndOfStream) {
+                    break;
+                }
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "read error") };
+            };
+
+            try input_buffer.append(byte);
+
+            // Check if current buffer ends with any delimiter
+            for (delimiters.items) |delimiter| {
+                if (delimiter.len == 0) continue; // Skip empty delimiters
+                if (input_buffer.items.len >= delimiter.len) {
+                    const end_slice = input_buffer.items[input_buffer.items.len - delimiter.len..];
+                    if (std.mem.eql(u8, end_slice, delimiter)) {
+                        // Found delimiter, return text without delimiter
+                        const result_len = input_buffer.items.len - delimiter.len;
+                        const result = try self.allocator.dupe(u8, input_buffer.items[0..result_len]);
+                        return MBLValue{ .text = memory.Text{ .data = result } };
+                    }
+                }
+            }
+        }
+
+        // EOF reached, return whatever we have
+        const result = try self.allocator.dupe(u8, input_buffer.items);
+        return MBLValue{ .text = memory.Text{ .data = result } };
     }
 
     fn handleTextMethod(self: *Interpreter, text: memory.Text, method_name: []const u8, arguments: []parser.Expression) anyerror!MBLValue {
