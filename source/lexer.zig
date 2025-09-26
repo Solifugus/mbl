@@ -62,7 +62,6 @@ pub const TokenType = enum {
     quote_kw,       // quote
     nothing_kw,     // Nothing
     unknown_kw,     // Unknown
-    empty_kw,       // empty
 
     // Duration units
     days_kw,        // days
@@ -128,7 +127,6 @@ pub const TokenType = enum {
             .quote_kw => "quote",
             .nothing_kw => "Nothing",
             .unknown_kw => "Unknown",
-            .empty_kw => "empty",
             .days_kw => "days",
             .hours_kw => "hours",
             .minutes_kw => "minutes",
@@ -596,7 +594,6 @@ pub const Lexer = struct {
             .{ "quote", .quote_kw },
             .{ "Nothing", .nothing_kw },
             .{ "Unknown", .unknown_kw },
-            .{ "empty", .empty_kw },
             .{ "days", .days_kw },
             .{ "hours", .hours_kw },
             .{ "minutes", .minutes_kw },

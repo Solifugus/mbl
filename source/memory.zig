@@ -475,6 +475,13 @@ pub const Activator = struct {
     }
 };
 
+// Ternary logic for business applications
+pub const TernaryLogic = enum {
+    true_val,
+    false_val,
+    unknown,
+};
+
 pub const MBLValue = union(enum) {
     text: Text,
     number: Number,
@@ -486,6 +493,7 @@ pub const MBLValue = union(enum) {
     list: List,
     function: Function,
     activator: Activator,
+    unknown: void,  // Ternary logic: true, false, unknown
 
     pub fn deinit(self: *MBLValue, allocator: std.mem.Allocator) void {
         switch (self.*) {
@@ -499,6 +507,7 @@ pub const MBLValue = union(enum) {
             .list => |*l| l.deinit(),
             .function => |*f| f.deinit(),
             .activator => |*a| a.deinit(),
+            .unknown => {}, // No cleanup needed
         }
     }
 
@@ -541,18 +550,70 @@ pub const MBLValue = union(enum) {
                 const str = try std.fmt.allocPrint(allocator, "[Activator: {s}]", .{a.name});
                 return Text{ .data = str };
             },
+            .unknown => {
+                return Text.init(allocator, "Unknown");
+            },
         }
     }
 
-    pub fn isTruthy(self: MBLValue) bool {
+    pub fn isTruthy(self: MBLValue) TernaryLogic {
         switch (self) {
-            .text => |t| return t.data.len > 0 and !std.mem.eql(u8, t.data, "Nothing"),
-            .number => |n| return n.value != 0.0,
-            .boolean => |b| return b.value,
-            .money => |m| return m.value != 0,
-            .time => |t| return t.value != 0,
-            .duration => |d| return d.value != 0,
-            .record, .list, .function, .activator => return true,
+            .text => |t| {
+                // Empty string is unknown in boolean context
+                if (t.data.len == 0) return .unknown;
+                // Try to parse as boolean
+                if (std.mem.eql(u8, t.data, "true")) return .true_val;
+                if (std.mem.eql(u8, t.data, "false")) return .false_val;
+                // Non-empty, non-boolean text is unknown
+                return .unknown;
+            },
+            .number => |n| return if (n.value != 0.0) .true_val else .false_val,
+            .boolean => |b| return if (b.value) .true_val else .false_val,
+            .money => |m| return if (m.value != 0) .true_val else .false_val,
+            .time => |t| return if (t.value != 0) .true_val else .false_val,
+            .duration => |d| return if (d.value != 0) .true_val else .false_val,
+            .record, .list, .function, .activator => return .true_val,
+            .unknown => return .unknown,
+        }
+    }
+
+    // Universal type conversion - all types can convert to/from text
+    pub fn convertToNumber(self: MBLValue, allocator: std.mem.Allocator) !MBLValue {
+        switch (self) {
+            .number => return self,
+            .boolean => |b| return MBLValue{ .number = b.toNumber() },
+            .text => |t| {
+                if (t.data.len == 0) return MBLValue{ .number = Number.init(0.0) }; // empty string -> 0
+                const value = std.fmt.parseFloat(f64, t.data) catch return MBLValue{ .unknown = {} };
+                return MBLValue{ .number = Number.init(value) };
+            },
+            .money => |m| return MBLValue{ .number = Number.init(m.toDollars()) },
+            .unknown => return MBLValue{ .unknown = {} },
+            else => return MBLValue{ .unknown = {} },
+        }
+    }
+
+    pub fn convertToText(self: MBLValue, allocator: std.mem.Allocator) !MBLValue {
+        switch (self) {
+            .text => return self,
+            else => {
+                const text = try self.toString(allocator);
+                return MBLValue{ .text = text };
+            },
+        }
+    }
+
+    pub fn convertToBoolean(self: MBLValue, allocator: std.mem.Allocator) !MBLValue {
+        switch (self) {
+            .boolean => return self,
+            .text => |t| {
+                if (std.mem.eql(u8, t.data, "true")) return MBLValue{ .boolean = Boolean.init(true) };
+                if (std.mem.eql(u8, t.data, "false")) return MBLValue{ .boolean = Boolean.init(false) };
+                return MBLValue{ .unknown = {} };
+            },
+            .number => |n| return MBLValue{ .boolean = Boolean.init(n.value != 0.0) },
+            .unknown => return MBLValue{ .unknown = {} },
+            else => return MBLValue{ .unknown = {} },
         }
     }
 

@@ -364,9 +364,13 @@ pub const Interpreter = struct {
             .duration => |duration_literal| {
                 return try self.parseDurationLiteral(duration_literal);
             },
-            .empty => {
-                // Return empty string
+            .nothing => {
+                // Nothing converts to empty string
                 return MBLValue{ .text = try memory.Text.init(self.allocator, "") };
+            },
+            .unknown => {
+                // Unknown is a distinct value type
+                return MBLValue{ .unknown = {} };
             },
             else => {
                 std.log.warn("  Literal type {s} not yet supported", .{@tagName(literal)});
@@ -671,6 +675,17 @@ pub const Interpreter = struct {
     }
 
     fn performAddition(self: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {
+        // Addition rules:
+        // number + string -> try convert string to number, else concatenate
+        // string + anything -> concatenate (convert right to string)
+        // number + number -> add
+        // money + money -> add (same currency)
+        // unknown + anything -> unknown
+
+        if (left == .unknown or right == .unknown) {
+            return MBLValue{ .unknown = {} };
+        }
+
         switch (left) {
             .number => |left_num| {
                 switch (right) {
@@ -678,73 +693,35 @@ pub const Interpreter = struct {
                         return MBLValue{ .number = memory.Number{ .value = left_num.value + right_num.value } };
                     },
                     .text => |right_text| {
-                        // String concatenation: number + text
-                        const left_str = try std.fmt.allocPrint(self.allocator, "{d}", .{left_num.value});
-                        defer self.allocator.free(left_str);
-                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_str, right_text.data});
+                        // Try to convert text to number for arithmetic, else concatenate
+                        if (right_text.data.len == 0) {
+                            // Empty string (Nothing) -> 0
+                            return MBLValue{ .number = memory.Number{ .value = left_num.value + 0.0 } };
+                        }
+                        if (std.fmt.parseFloat(f64, right_text.data)) |num_val| {
+                            return MBLValue{ .number = memory.Number{ .value = left_num.value + num_val } };
+                        } else |_| {
+                            // Can't parse as number, concatenate
+                            const left_str = try std.fmt.allocPrint(self.allocator, "{d}", .{left_num.value});
+                            const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_str, right_text.data });
+                            defer self.allocator.free(left_str);
+                            return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
+                        }
+                    },
+                    else => {
+                        // Convert right to text and concatenate
+                        const left_text = try left.convertToText(self.allocator);
+                        const right_text = try right.convertToText(self.allocator);
+                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.text.data, right_text.text.data });
                         return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
                     },
-                    else => return error.TypeError,
                 }
             },
             .text => |left_text| {
-                switch (right) {
-                    .text => |right_text| {
-                        // String concatenation
-                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_text.data, right_text.data});
-                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
-                    },
-                    .number => |right_num| {
-                        // String concatenation: text + number
-                        const right_str = try std.fmt.allocPrint(self.allocator, "{d}", .{right_num.value});
-                        defer self.allocator.free(right_str);
-                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_text.data, right_str});
-                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
-                    },
-                    .boolean => |right_bool| {
-                        // String concatenation: text + boolean
-                        const right_str = if (right_bool.value) "true" else "false";
-                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_text.data, right_str});
-                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
-                    },
-                    .money => |right_money| {
-                        // String concatenation: text + money
-                        const dollars = @as(f64, @floatFromInt(right_money.value)) / 100.0;
-                        const right_str = try std.fmt.allocPrint(self.allocator, "${d:.2} {s}", .{dollars, right_money.currency});
-                        defer self.allocator.free(right_str);
-                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_text.data, right_str});
-                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
-                    },
-                    .time => |right_time| {
-                        // String concatenation: text + time
-                        const right_str = try right_time.formatDateTime(self.allocator);
-                        defer self.allocator.free(right_str);
-                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_text.data, right_str});
-                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
-                    },
-                    .duration => |right_duration| {
-                        // String concatenation: text + duration
-                        const right_str = try right_duration.format(self.allocator);
-                        defer self.allocator.free(right_str);
-                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_text.data, right_str});
-                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
-                    },
-                    .record => |right_record| {
-                        // String concatenation: text + record
-                        _ = right_record;
-                        const right_str = "[Record]"; // Simple representation for now
-                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_text.data, right_str});
-                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
-                    },
-                    .list => |*right_list| {
-                        // String concatenation: text + list
-                        const right_str = try std.fmt.allocPrint(self.allocator, "[List with {d} elements]", .{right_list.len()});
-                        defer self.allocator.free(right_str);
-                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_text.data, right_str});
-                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
-                    },
-                    else => return error.TypeError,
-                }
+                // String concatenation: convert everything to text
+                const right_text = try right.convertToText(self.allocator);
+                const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.data, right_text.text.data });
+                return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
             },
             .money => |left_money| {
                 switch (right) {
@@ -754,63 +731,59 @@ pub const Interpreter = struct {
                         const result_money = try memory.Money.init(self.allocator, result_value, left_money.currency, left_money.currency, 1.0);
                         return MBLValue{ .money = result_money };
                     },
-                    .text => |right_text| {
-                        // String concatenation: money + text
-                        const dollars = @as(f64, @floatFromInt(left_money.value)) / 100.0;
-                        const left_str = try std.fmt.allocPrint(self.allocator, "${d:.2} {s}", .{dollars, left_money.currency});
-                        defer self.allocator.free(left_str);
-                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_str, right_text.data});
+                    else => {
+                        // Convert to text and concatenate
+                        const left_text = try left.convertToText(self.allocator);
+                        const right_text = try right.convertToText(self.allocator);
+                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.text.data, right_text.text.data });
                         return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
                     },
-                    else => return error.TypeError,
-                }
-            },
-            .boolean => |left_bool| {
-                switch (right) {
-                    .text => |right_text| {
-                        // String concatenation: boolean + text
-                        const left_str = if (left_bool.value) "true" else "false";
-                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_str, right_text.data});
-                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
-                    },
-                    else => return error.TypeError,
                 }
             },
             .time => |left_time| {
                 switch (right) {
-                    .text => |right_text| {
-                        // String concatenation: time + text
-                        const left_str = try left_time.formatDateTime(self.allocator);
-                        defer self.allocator.free(left_str);
-                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_str, right_text.data});
-                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
-                    },
                     .time => |right_time| {
                         // Time arithmetic: time + time (duration)
                         const result_time = left_time.add(right_time);
                         return MBLValue{ .time = result_time };
                     },
-                    else => return error.TypeError,
+                    .duration => |right_duration| {
+                        // Time + duration = time
+                        const result_time = left_time.addDuration(right_duration);
+                        return MBLValue{ .time = result_time };
+                    },
+                    else => {
+                        // Convert to text and concatenate
+                        const left_text = try left.convertToText(self.allocator);
+                        const right_text = try right.convertToText(self.allocator);
+                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.text.data, right_text.text.data });
+                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
+                    },
                 }
             },
             .duration => |left_duration| {
                 switch (right) {
-                    .text => |right_text| {
-                        // String concatenation: duration + text
-                        const left_str = try left_duration.format(self.allocator);
-                        defer self.allocator.free(left_str);
-                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{left_str, right_text.data});
-                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
-                    },
                     .duration => |right_duration| {
                         // Duration arithmetic: duration + duration
                         const result_duration = left_duration.add(right_duration);
                         return MBLValue{ .duration = result_duration };
                     },
-                    else => return error.TypeError,
+                    else => {
+                        // Convert to text and concatenate
+                        const left_text = try left.convertToText(self.allocator);
+                        const right_text = try right.convertToText(self.allocator);
+                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.text.data, right_text.text.data });
+                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
+                    },
                 }
             },
-            else => return error.TypeError,
+            else => {
+                // Convert everything to text and concatenate
+                const left_text = try left.convertToText(self.allocator);
+                const right_text = try right.convertToText(self.allocator);
+                const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.text.data, right_text.text.data });
+                return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
+            },
         }
     }
 
@@ -1086,8 +1059,17 @@ pub const Interpreter = struct {
                 }
             },
             .logical_not => {
-                const is_truthy = self.isTruthy(operand);
-                return MBLValue{ .boolean = memory.Boolean{ .value = !is_truthy } };
+                const logic = operand.isTruthy();
+                const result = switch (logic) {
+                    .true_val => memory.TernaryLogic.false_val,
+                    .false_val => memory.TernaryLogic.true_val,
+                    .unknown => memory.TernaryLogic.unknown,
+                };
+                return switch (result) {
+                    .true_val => MBLValue{ .boolean = memory.Boolean{ .value = true } },
+                    .false_val => MBLValue{ .boolean = memory.Boolean{ .value = false } },
+                    .unknown => MBLValue{ .unknown = {} },
+                };
             },
         };
     }
@@ -1480,5 +1462,63 @@ pub const Interpreter = struct {
             function_scope.deinit(); // Clean up the original scope after cloning
             return MBLValue{ .record = cloned_record };
         }
+    }
+
+    fn performLogicalAnd(self: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {
+        const left_logic = left.isTruthy();
+        const right_logic = right.isTruthy();
+
+        // Ternary logic AND truth table
+        const result = switch (left_logic) {
+            .true_val => switch (right_logic) {
+                .true_val => memory.TernaryLogic.true_val,
+                .false_val => memory.TernaryLogic.false_val,
+                .unknown => memory.TernaryLogic.unknown,
+            },
+            .false_val => memory.TernaryLogic.false_val, // false dominates
+            .unknown => switch (right_logic) {
+                .false_val => memory.TernaryLogic.false_val, // false dominates
+                else => memory.TernaryLogic.unknown,
+            },
+        };
+
+        return switch (result) {
+            .true_val => MBLValue{ .boolean = memory.Boolean{ .value = true } },
+            .false_val => MBLValue{ .boolean = memory.Boolean{ .value = false } },
+            .unknown => MBLValue{ .unknown = {} },
+        };
+    }
+
+    fn performLogicalOr(self: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {
+        const left_logic = left.isTruthy();
+        const right_logic = right.isTruthy();
+
+        // Ternary logic OR truth table
+        const result = switch (left_logic) {
+            .true_val => memory.TernaryLogic.true_val, // true dominates
+            .false_val => switch (right_logic) {
+                .true_val => memory.TernaryLogic.true_val,
+                .false_val => memory.TernaryLogic.false_val,
+                .unknown => memory.TernaryLogic.unknown,
+            },
+            .unknown => switch (right_logic) {
+                .true_val => memory.TernaryLogic.true_val, // true dominates
+                else => memory.TernaryLogic.unknown,
+            },
+        };
+
+        return switch (result) {
+            .true_val => MBLValue{ .boolean = memory.Boolean{ .value = true } },
+            .false_val => MBLValue{ .boolean = memory.Boolean{ .value = false } },
+            .unknown => MBLValue{ .unknown = {} },
+        };
+    }
+
+    fn isTruthy(self: *Interpreter, value: MBLValue) bool {
+        // Legacy support - convert TernaryLogic to bool for older code
+        return switch (value.isTruthy()) {
+            .true_val => true,
+            .false_val, .unknown => false,
+        };
     }
 };

@@ -70,7 +70,7 @@ MBL is case-sensitive. `Name` and `name` are different variables.
 Text values enclosed in double quotes:
 ```mbl
 company_name = "Acme Corporation"
-empty_text = ""
+empty_text = Nothing        # Empty string (replaces previous "" syntax)
 multi_quote = """This is a "quoted" word"""
 ```
 
@@ -111,16 +111,18 @@ discount = $50
 - *Multiple currencies planned*
 
 ### Boolean
-True/false values:
+True/false/unknown values (ternary logic):
 ```mbl
 is_active = true
 is_complete = false
+customer_verified = Unknown  # For incomplete data
 ```
 
 **Operations:**
-- `and`, `or`, `not` operators
-- Comparison results are boolean
+- `and`, `or`, `not` operators with ternary logic
+- Comparison results are boolean or Unknown
 - Automatic conversion from other types
+- Nothing becomes Unknown in boolean context
 
 ### Time
 Date and time literals:
@@ -174,6 +176,24 @@ mixed_data = [100, "text", true, $500]
 - Dynamic sizing
 - *List methods like `append()`, `length()` planned*
 
+### Nothing and Unknown
+Special values for missing or indeterminate data:
+```mbl
+name = Nothing     # Becomes empty string ""
+verified = Unknown # Indeterminate boolean state
+```
+
+**Nothing behavior:**
+- Nothing → "" (empty string) when used as text
+- Nothing + "text" → "text" (concatenation)
+- 5 + Nothing → 5 (arithmetic: Nothing becomes 0)
+- true and Nothing → Unknown (boolean: Nothing unparseable)
+
+**Universal Type Conversion:**
+- All types convert to Text (universal intermediary)
+- Text converts to other types when parseable
+- Unparseable conversions result in Unknown
+
 ---
 
 ## Variables and Assignment
@@ -215,6 +235,11 @@ result = 10 + 5      # Addition: 15
 result = 10 - 5      # Subtraction: 5
 result = 10 * 5      # Multiplication: 50
 result = 10 / 5      # Division: 2
+
+# Smart type conversion
+result = 5 + "25"    # 30 (string parsed as number)
+result = "25" + 5    # "255" (number converted to string)
+result = 5 + Nothing # 5 (Nothing becomes 0 in numeric context)
 ```
 
 **Money Arithmetic:**
@@ -235,17 +260,32 @@ count < 10          # Less than
 score <= 100        # Less than or equal
 ```
 
-### Logical Operators
+### Logical Operators (Ternary Logic)
 ```mbl
 is_eligible = age >= 18 and salary > 30000
 needs_review = score < 60 or absent_days > 5
 is_not_ready = not is_complete
+
+# Ternary logic with Unknown values
+customer_verified = Unknown
+result = true and customer_verified    # Unknown
+result = false or customer_verified    # Unknown
+result = not customer_verified         # Unknown
 ```
+
+**Ternary Truth Tables:**
+- `false and anything` → `false` (false dominates)
+- `true or anything` → `true` (true dominates)
+- `Unknown` with inconclusive operations → `Unknown`
 
 ### String Operations
 ```mbl
 full_name = first_name + " " + last_name
 greeting = "Hello, " + name + "!"
+
+# Smart concatenation with Nothing
+message = "Status: " + Nothing     # "Status: " (Nothing becomes empty string)
+name = Nothing + "John"            # "John"
 ```
 
 ### Operator Precedence
