@@ -59,6 +59,197 @@ pub const Text = struct {
         const result = try std.mem.replaceOwned(u8, allocator, self.data, search, replacement);
         return Text{ .data = result };
     }
+
+    // v0.10.0 - Enhanced text methods
+
+    pub fn trim(self: Text, allocator: std.mem.Allocator, chars: ?[]const u8) !Text {
+        const trim_chars = chars orelse " \t\n\r";
+        const start = std.mem.indexOfNone(u8, self.data, trim_chars) orelse 0;
+        const end = std.mem.lastIndexOfNone(u8, self.data, trim_chars) orelse self.data.len - 1;
+        if (start > end) {
+            return Text{ .data = try allocator.dupe(u8, "") };
+        }
+        const trimmed = self.data[start..end + 1];
+        return Text{ .data = try allocator.dupe(u8, trimmed) };
+    }
+
+    pub fn left_trim(self: Text, allocator: std.mem.Allocator, chars: ?[]const u8) !Text {
+        const trim_chars = chars orelse " \t\n\r";
+        const start = std.mem.indexOfNone(u8, self.data, trim_chars) orelse self.data.len;
+        const trimmed = self.data[start..];
+        return Text{ .data = try allocator.dupe(u8, trimmed) };
+    }
+
+    pub fn right_trim(self: Text, allocator: std.mem.Allocator, chars: ?[]const u8) !Text {
+        const trim_chars = chars orelse " \t\n\r";
+        const end = std.mem.lastIndexOfNone(u8, self.data, trim_chars) orelse return Text{ .data = try allocator.dupe(u8, "") };
+        const trimmed = self.data[0..end + 1];
+        return Text{ .data = try allocator.dupe(u8, trimmed) };
+    }
+
+    pub fn left_pad(self: Text, allocator: std.mem.Allocator, width: usize, pad_char: ?[]const u8) !Text {
+        const pad_str = pad_char orelse " ";
+        if (self.data.len >= width) {
+            return Text{ .data = try allocator.dupe(u8, self.data) };
+        }
+        const pad_count = width - self.data.len;
+        const result = try allocator.alloc(u8, width);
+
+        // Fill with padding
+        var i: usize = 0;
+        while (i < pad_count) : (i += 1) {
+            result[i] = pad_str[0];
+        }
+
+        // Copy original text
+        @memcpy(result[pad_count..], self.data);
+        return Text{ .data = result };
+    }
+
+    pub fn right_pad(self: Text, allocator: std.mem.Allocator, width: usize, pad_char: ?[]const u8) !Text {
+        const pad_str = pad_char orelse " ";
+        if (self.data.len >= width) {
+            return Text{ .data = try allocator.dupe(u8, self.data) };
+        }
+        const result = try allocator.alloc(u8, width);
+
+        // Copy original text
+        @memcpy(result[0..self.data.len], self.data);
+
+        // Fill with padding
+        var i: usize = self.data.len;
+        while (i < width) : (i += 1) {
+            result[i] = pad_str[0];
+        }
+
+        return Text{ .data = result };
+    }
+
+    pub fn slice(self: Text, allocator: std.mem.Allocator, start: i32, end: i32) !Text {
+        const str_len = @as(i32, @intCast(self.data.len));
+
+        // Handle negative indices
+        const actual_start = if (start < 0) @max(0, str_len + start) else @min(@as(usize, @intCast(start)), self.data.len);
+        const actual_end = if (end < 0) @max(0, str_len + end) else @min(@as(usize, @intCast(end)), self.data.len);
+
+        if (actual_start >= actual_end) {
+            return Text{ .data = try allocator.dupe(u8, "") };
+        }
+
+        const sliced = self.data[actual_start..actual_end];
+        return Text{ .data = try allocator.dupe(u8, sliced) };
+    }
+
+    pub fn splice(self: Text, allocator: std.mem.Allocator, start: usize, count: usize, replacement: []const u8) !Text {
+        const actual_start = @min(start, self.data.len);
+        const actual_count = @min(count, self.data.len - actual_start);
+        const end = actual_start + actual_count;
+
+        const new_len = self.data.len - actual_count + replacement.len;
+        const result = try allocator.alloc(u8, new_len);
+
+        // Copy before splice point
+        @memcpy(result[0..actual_start], self.data[0..actual_start]);
+
+        // Copy replacement
+        @memcpy(result[actual_start..actual_start + replacement.len], replacement);
+
+        // Copy after splice point
+        @memcpy(result[actual_start + replacement.len..], self.data[end..]);
+
+        return Text{ .data = result };
+    }
+
+    pub fn fill(self: Text, allocator: std.mem.Allocator, data: *const MBLValue) !Text {
+        var result = try allocator.dupe(u8, self.data);
+
+        switch (data.*) {
+            .record => |*record| {
+                // Find [property_name] patterns and replace with record values
+                var i: usize = 0;
+                while (i < result.len) {
+                    if (result[i] == '[') {
+                        // Find closing bracket
+                        var end_bracket: ?usize = null;
+                        for (result[i + 1..], i + 1..) |char, idx| {
+                            if (char == ']') {
+                                end_bracket = idx;
+                                break;
+                            }
+                        }
+
+                        if (end_bracket) |end_idx| {
+                            const property_name = result[i + 1..end_idx];
+                            if (@constCast(record).get(property_name)) |value| {
+                                // Convert value to text
+                                var value_text = try value.convertToText(allocator);
+                                defer value_text.deinit(allocator);
+
+                                const new_result = try std.mem.replaceOwned(u8, allocator, result, result[i..end_idx + 1], value_text.text.data);
+                                allocator.free(result);
+                                result = new_result;
+                            } else {
+                                // Property not found, replace with "unknown"
+                                const new_result = try std.mem.replaceOwned(u8, allocator, result, result[i..end_idx + 1], "unknown");
+                                allocator.free(result);
+                                result = new_result;
+                            }
+                        }
+                    }
+                    i += 1;
+                }
+            },
+            .list => |list| {
+                // Find [index] patterns and replace with list values
+                var i: usize = 0;
+                while (i < result.len) {
+                    if (result[i] == '[') {
+                        // Find closing bracket
+                        var end_bracket: ?usize = null;
+                        for (result[i + 1..], i + 1..) |char, idx| {
+                            if (char == ']') {
+                                end_bracket = idx;
+                                break;
+                            }
+                        }
+
+                        if (end_bracket) |end_idx| {
+                            const index_str = result[i + 1..end_idx];
+                            const index = std.fmt.parseInt(usize, index_str, 10) catch {
+                                // Invalid index, replace with "unknown"
+                                const new_result = try std.mem.replaceOwned(u8, allocator, result, result[i..end_idx + 1], "unknown");
+                                allocator.free(result);
+                                result = new_result;
+                                continue;
+                            };
+
+                            if (list.get(index)) |value| {
+                                // Convert value to text
+                                var value_text = try value.convertToText(allocator);
+                                defer value_text.deinit(allocator);
+
+                                const new_result = try std.mem.replaceOwned(u8, allocator, result, result[i..end_idx + 1], value_text.text.data);
+                                allocator.free(result);
+                                result = new_result;
+                            } else {
+                                // Index out of bounds, replace with "unknown"
+                                const new_result = try std.mem.replaceOwned(u8, allocator, result, result[i..end_idx + 1], "unknown");
+                                allocator.free(result);
+                                result = new_result;
+                            }
+                        }
+                    }
+                    i += 1;
+                }
+            },
+            else => {
+                // For other types, just return the original text
+                return Text{ .data = result };
+            }
+        }
+
+        return Text{ .data = result };
+    }
 };
 
 pub const Number = struct {
@@ -66,6 +257,10 @@ pub const Number = struct {
 
     pub fn init(value: f64) Number {
         return Number{ .value = value };
+    }
+
+    pub fn toString(self: Number, allocator: std.mem.Allocator) ![]u8 {
+        return try std.fmt.allocPrint(allocator, "{d}", .{self.value});
     }
 };
 
@@ -694,11 +889,51 @@ pub const Memory = struct {
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) Memory {
-        return Memory{
+        var memory = Memory{
             .program = Record.init(allocator),
             .activators = std.ArrayList(Activator).init(allocator),
             .allocator = allocator,
         };
+
+        // Initialize symbol record
+        memory.initSymbolRecord() catch |err| {
+            std.debug.print("Warning: Failed to initialize symbol record: {}\n", .{err});
+        };
+
+        return memory;
+    }
+
+    fn initSymbolRecord(self: *Memory) !void {
+        var symbol_record = Record.init(self.allocator);
+
+        // Currency symbols
+        try symbol_record.set("dollar", MBLValue{ .text = try Text.init(self.allocator, "$") });
+        try symbol_record.set("euro", MBLValue{ .text = try Text.init(self.allocator, "€") });
+        try symbol_record.set("pound", MBLValue{ .text = try Text.init(self.allocator, "£") });
+        try symbol_record.set("yen", MBLValue{ .text = try Text.init(self.allocator, "¥") });
+
+        // Status symbols
+        try symbol_record.set("checkmark", MBLValue{ .text = try Text.init(self.allocator, "✓") });
+        try symbol_record.set("xmark", MBLValue{ .text = try Text.init(self.allocator, "✗") });
+        try symbol_record.set("bullet", MBLValue{ .text = try Text.init(self.allocator, "•") });
+
+        // Arrow symbols
+        try symbol_record.set("arrow_right", MBLValue{ .text = try Text.init(self.allocator, "→") });
+        try symbol_record.set("arrow_left", MBLValue{ .text = try Text.init(self.allocator, "←") });
+        try symbol_record.set("arrow_up", MBLValue{ .text = try Text.init(self.allocator, "↑") });
+        try symbol_record.set("arrow_down", MBLValue{ .text = try Text.init(self.allocator, "↓") });
+
+        // Text formatting symbols
+        try symbol_record.set("newline", MBLValue{ .text = try Text.init(self.allocator, "\n") });
+        try symbol_record.set("tab", MBLValue{ .text = try Text.init(self.allocator, "\t") });
+        try symbol_record.set("quote", MBLValue{ .text = try Text.init(self.allocator, "\"") });
+
+        // Business symbols
+        try symbol_record.set("copyright", MBLValue{ .text = try Text.init(self.allocator, "©") });
+        try symbol_record.set("trademark", MBLValue{ .text = try Text.init(self.allocator, "™") });
+        try symbol_record.set("registered", MBLValue{ .text = try Text.init(self.allocator, "®") });
+
+        try self.program.set("symbol", MBLValue{ .record = symbol_record });
     }
 
     pub fn deinit(self: *Memory) void {

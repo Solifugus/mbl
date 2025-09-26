@@ -72,15 +72,36 @@
 - [x] Business rules: Declarative constraint and policy enforcement
 - [x] Self-healing systems: Automatic error correction capabilities
 
-## 📁 v0.10.0 - I/O & External Data (PLANNED)
-- [ ] File operations: `program.read("file.txt")`, `program.write_file()`
+## ✅ v0.10.0 - Enhanced Text Methods & Symbol System (COMPLETE)
+
+### Core Text Methods (Dot Notation):
+- [x] Length: `text.len()` - Get string length
+- [x] Trimming: `text.trim()`, `text.trim(chars)` - Remove whitespace/chars from both ends
+- [x] Left trim: `text.left_trim()`, `text.left_trim(chars)` - Remove from start (default: spaces)
+- [x] Right trim: `text.right_trim()`, `text.right_trim(chars)` - Remove from end (default: spaces)
+- [x] Left pad: `text.left_pad(width)`, `text.left_pad(width, char)` - Pad to width (default: spaces)
+- [x] Right pad: `text.right_pad(width)`, `text.right_pad(width, char)` - Pad to width (default: spaces)
+- [x] Slice: `text.slice(start, end)` - Extract substring (replaces substring)
+- [x] Splice: `text.splice(start, count, replacement)` - Replace section (replaces replace)
+- [x] Interpolate: `text.fill( record )` - names in square brackets interpolated from same names in record
+- [x] Interpolate list: `text.fill( list )` - index numbers in square brackets for list indexes
+### Symbol System:
+- [x] Program-level symbol record: `symbol.dollar`, `symbol.euro`, `symbol.checkmark`
+- [x] Unicode function: `symbol.unicode(8364)` for € character by code point
+- [x] Text formatting symbols: `symbol.newline`, `symbol.tab`, `symbol.quote`
+- [x] Business symbols: Copyright ©, trademark ™, registered ®, currency symbols
+- [x] Status symbols: Checkmarks ✓, X marks ✗, bullets •, arrows → ← ↑ ↓
+
+## 📁 v0.11.0 - I/O & External Data (PLANNED)
+- [ ] stdin/stderr: `program.read(delimiter)`, `program.error(msg)`
+- [ ] File operations: `program.file_read()`, `program.file_write()`
 - [ ] CSV support: Read/write business data files
 - [ ] JSON integration: Parse and generate JSON data
 - [ ] Network requests: Basic HTTP GET/POST operations
 - [ ] Database connections: Simple query capabilities
 - [ ] Configuration file support
 
-## 🚀 v0.11.0 - Advanced Features (PLANNED)
+## 🚀 v0.12.0 - Advanced Features (PLANNED)
 - [ ] Error handling: `try/catch` blocks
 - [ ] Multi-line comment blocks: `### ... ###`
 - [ ] Code organization: Import/export between files
@@ -121,9 +142,9 @@ When starting a new version:
 9. [ ] Tag release: `git tag v0.x.0`
 10. [ ] Update ROADMAP.md with completed items
 
-## 🎯 Current Status: v0.9.0 - Reactive Business Programming Language
+## 🎯 Current Status: v0.10.0 - Enhanced Text Methods & Symbol System
 
-**MBL is now a complete reactive programming platform for business applications!**
+**MBL now includes comprehensive text manipulation methods and a rich symbol system!**
 
 ### ✅ **Complete Feature Set:**
 - **All Core Language Features**: Variables, expressions, control flow, functions
@@ -131,6 +152,8 @@ When starting a new version:
 - **Advanced Control Flow**: If/else, while/for loops, break/continue, goto/labels
 - **Professional CLI**: `mbl program.mbl` with `--quiet` mode and global installation
 - **Reactive Programming**: `anytime condition:` activators for event-driven logic
+- **Text Methods**: `text.trim()`, `text.len()`, `text.slice()`, etc. with dot notation and method chaining
+- **Symbol System**: `symbol.dollar`, `symbol.checkmark`, `symbol.unicode(8364)` for business applications
 - **Production Ready**: Clean output, proper error handling, comprehensive testing
 
 ### 🏗️ **Robust Architecture:**
@@ -148,6 +171,6 @@ When starting a new version:
 
 MBL can now handle complex reactive business scenarios including inventory management, financial controls, compliance monitoring, and automated business rule enforcement with enterprise-grade reliability.
 
-## 🎯 Next Priority: v0.10.0 - I/O & External Data
+## 🎯 Next Priority: v0.11.0 - I/O & External Data
 
 The next major milestone will add file operations, network requests, and database connectivity to enable MBL applications to interact with external systems and data sources.

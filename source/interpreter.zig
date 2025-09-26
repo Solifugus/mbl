@@ -602,17 +602,29 @@ pub const Interpreter = struct {
         return (@rem(year, 4) == 0 and @rem(year, 100) != 0) or (@rem(year, 400) == 0);
     }
 
-    fn evaluateCall(self: *Interpreter, call_expr: parser.CallExpression) !MBLValue {
-        // Handle program.write() specifically
+    fn evaluateCall(self: *Interpreter, call_expr: parser.CallExpression) anyerror!MBLValue {
+        // Handle method calls on expressions (e.g., text.method())
         if (call_expr.callee.* == .property_access) {
             const prop_access = call_expr.callee.property_access;
+            const method_name = prop_access.property;
+
+            // Handle program.write() specifically first
             if (prop_access.object.* == .identifier) {
                 const obj_name = prop_access.object.identifier.name;
-                const prop_name = prop_access.property;
-
-                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, prop_name, "write")) {
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "write")) {
                     return try self.handleProgramWrite(call_expr.arguments);
                 }
+                if (std.mem.eql(u8, obj_name, "symbol") and std.mem.eql(u8, method_name, "unicode")) {
+                    return try self.handleSymbolUnicode(call_expr.arguments);
+                }
+            }
+
+            // Evaluate the object being called on for other methods
+            const object_value = try self.evaluateExpression(prop_access.object.*);
+
+            // Handle text methods
+            if (object_value == .text) {
+                return try self.handleTextMethod(object_value.text, method_name, call_expr.arguments);
             }
         }
 
@@ -660,6 +672,212 @@ pub const Interpreter = struct {
             try self.output.append('\n');
         }
         return MBLValue{ .text = try memory.Text.init(self.allocator, "") };
+    }
+
+    fn handleSymbolUnicode(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len != 1) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "unicode() requires exactly one argument") };
+        }
+
+        const arg_value = self.evaluateExpression(arguments[0]) catch |err| {
+            std.log.warn("Error evaluating unicode argument: {!}", .{err});
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "error") };
+        };
+
+        // Convert argument to number (Unicode code point)
+        var code_point: u21 = 0;
+        switch (arg_value) {
+            .number => |num| {
+                if (num.value >= 0 and num.value <= 1114111) { // Valid Unicode range
+                    code_point = @intFromFloat(num.value);
+                } else {
+                    return MBLValue{ .text = try memory.Text.init(self.allocator, "Invalid Unicode code point") };
+                }
+            },
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "unicode() requires a number argument") };
+            },
+        }
+
+        // Convert Unicode code point to UTF-8 string
+        var utf8_buffer: [4]u8 = undefined;
+        const utf8_len = try std.unicode.utf8Encode(code_point, &utf8_buffer);
+        const utf8_text = try self.allocator.dupe(u8, utf8_buffer[0..utf8_len]);
+
+        return MBLValue{ .text = memory.Text{ .data = utf8_text } };
+    }
+
+    fn handleTextMethod(self: *Interpreter, text: memory.Text, method_name: []const u8, arguments: []parser.Expression) anyerror!MBLValue {
+        // len() method - no arguments
+        if (std.mem.eql(u8, method_name, "len")) {
+            if (arguments.len != 0) {
+                std.log.warn("len() method takes no arguments", .{});
+            }
+            return MBLValue{ .number = memory.Number.init(@floatFromInt(text.len())) };
+        }
+
+        // trim() method - optional chars argument
+        else if (std.mem.eql(u8, method_name, "trim")) {
+            const chars = if (arguments.len > 0) blk: {
+                const arg_val = try self.evaluateExpression(arguments[0]);
+                if (arg_val == .text) {
+                    break :blk arg_val.text.data;
+                } else {
+                    break :blk null;
+                }
+            } else null;
+
+            const result = try text.trim(self.allocator, chars);
+            return MBLValue{ .text = result };
+        }
+
+        // left_trim() method
+        else if (std.mem.eql(u8, method_name, "left_trim")) {
+            const chars = if (arguments.len > 0) blk: {
+                const arg_val = try self.evaluateExpression(arguments[0]);
+                if (arg_val == .text) {
+                    break :blk arg_val.text.data;
+                } else {
+                    break :blk null;
+                }
+            } else null;
+
+            const result = try text.left_trim(self.allocator, chars);
+            return MBLValue{ .text = result };
+        }
+
+        // right_trim() method
+        else if (std.mem.eql(u8, method_name, "right_trim")) {
+            const chars = if (arguments.len > 0) blk: {
+                const arg_val = try self.evaluateExpression(arguments[0]);
+                if (arg_val == .text) {
+                    break :blk arg_val.text.data;
+                } else {
+                    break :blk null;
+                }
+            } else null;
+
+            const result = try text.right_trim(self.allocator, chars);
+            return MBLValue{ .text = result };
+        }
+
+        // left_pad() method - width required, char optional
+        else if (std.mem.eql(u8, method_name, "left_pad")) {
+            if (arguments.len == 0) {
+                std.log.warn("left_pad() method requires width argument", .{});
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "error") };
+            }
+
+            const width_val = try self.evaluateExpression(arguments[0]);
+            if (width_val != .number) {
+                std.log.warn("left_pad() width must be a number", .{});
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "error") };
+            }
+            const width = @as(usize, @intFromFloat(width_val.number.value));
+
+            const pad_char = if (arguments.len > 1) blk: {
+                const arg_val = try self.evaluateExpression(arguments[1]);
+                if (arg_val == .text) {
+                    break :blk arg_val.text.data;
+                } else {
+                    break :blk null;
+                }
+            } else null;
+
+            const result = try text.left_pad(self.allocator, width, pad_char);
+            return MBLValue{ .text = result };
+        }
+
+        // right_pad() method - width required, char optional
+        else if (std.mem.eql(u8, method_name, "right_pad")) {
+            if (arguments.len == 0) {
+                std.log.warn("right_pad() method requires width argument", .{});
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "error") };
+            }
+
+            const width_val = try self.evaluateExpression(arguments[0]);
+            if (width_val != .number) {
+                std.log.warn("right_pad() width must be a number", .{});
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "error") };
+            }
+            const width = @as(usize, @intFromFloat(width_val.number.value));
+
+            const pad_char = if (arguments.len > 1) blk: {
+                const arg_val = try self.evaluateExpression(arguments[1]);
+                if (arg_val == .text) {
+                    break :blk arg_val.text.data;
+                } else {
+                    break :blk null;
+                }
+            } else null;
+
+            const result = try text.right_pad(self.allocator, width, pad_char);
+            return MBLValue{ .text = result };
+        }
+
+        // slice() method - start and end required
+        else if (std.mem.eql(u8, method_name, "slice")) {
+            if (arguments.len < 2) {
+                std.log.warn("slice() method requires start and end arguments", .{});
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "error") };
+            }
+
+            const start_val = try self.evaluateExpression(arguments[0]);
+            const end_val = try self.evaluateExpression(arguments[1]);
+
+            if (start_val != .number or end_val != .number) {
+                std.log.warn("slice() arguments must be numbers", .{});
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "error") };
+            }
+
+            const start = @as(i32, @intFromFloat(start_val.number.value));
+            const end = @as(i32, @intFromFloat(end_val.number.value));
+
+            const result = try text.slice(self.allocator, start, end);
+            return MBLValue{ .text = result };
+        }
+
+        // splice() method - start, count, replacement required
+        else if (std.mem.eql(u8, method_name, "splice")) {
+            if (arguments.len < 3) {
+                std.log.warn("splice() method requires start, count, and replacement arguments", .{});
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "error") };
+            }
+
+            const start_val = try self.evaluateExpression(arguments[0]);
+            const count_val = try self.evaluateExpression(arguments[1]);
+            const replacement_val = try self.evaluateExpression(arguments[2]);
+
+            if (start_val != .number or count_val != .number or replacement_val != .text) {
+                std.log.warn("splice() arguments must be (number, number, text)", .{});
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "error") };
+            }
+
+            const start = @as(usize, @intFromFloat(start_val.number.value));
+            const count = @as(usize, @intFromFloat(count_val.number.value));
+            const replacement = replacement_val.text.data;
+
+            const result = try text.splice(self.allocator, start, count, replacement);
+            return MBLValue{ .text = result };
+        }
+
+        // fill() method - data required (record or list)
+        else if (std.mem.eql(u8, method_name, "fill")) {
+            if (arguments.len == 0) {
+                std.log.warn("fill() method requires data argument (record or list)", .{});
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "error") };
+            }
+
+            const data_val = try self.evaluateExpression(arguments[0]);
+            const result = try text.fill(self.allocator, &data_val);
+            return MBLValue{ .text = result };
+        }
+
+        // Unknown method
+        else {
+            std.log.warn("Unknown text method: {s}", .{method_name});
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "unknown_method") };
+        }
     }
 
     fn evaluateBinaryExpression(self: *Interpreter, binary_expr: parser.BinaryExpression) anyerror!MBLValue {
