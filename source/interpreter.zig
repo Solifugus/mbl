@@ -620,6 +620,9 @@ pub const Interpreter = struct {
                 if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "prompt")) {
                     return try self.handleProgramPrompt(call_expr.arguments);
                 }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "error")) {
+                    return try self.handleProgramError(call_expr.arguments);
+                }
                 if (std.mem.eql(u8, obj_name, "symbol") and std.mem.eql(u8, method_name, "unicode")) {
                     return try self.handleSymbolUnicode(call_expr.arguments);
                 }
@@ -849,6 +852,44 @@ pub const Interpreter = struct {
         // EOF reached, return whatever we have
         const result = try self.allocator.dupe(u8, input_buffer.items);
         return MBLValue{ .text = memory.Text{ .data = result } };
+    }
+
+    fn handleProgramError(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len > 0) {
+            const arg_value = self.evaluateExpression(arguments[0]) catch |err| {
+                std.log.warn("Error evaluating error message: {!}", .{err});
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "error") };
+            };
+
+            // Convert any MBL value to string for error output
+            var error_text: []const u8 = undefined;
+            switch (arg_value) {
+                .text => |text| {
+                    error_text = text.data;
+                },
+                .number => |num| {
+                    const formatted = try std.fmt.allocPrint(self.allocator, "{d}", .{num.value});
+                    error_text = formatted;
+                },
+                .boolean => |bool_val| {
+                    error_text = if (bool_val.value) "true" else "false";
+                },
+                .money => |money| {
+                    const dollars = @as(f64, @floatFromInt(money.value)) / 100.0;
+                    const formatted = try std.fmt.allocPrint(self.allocator, "${d:.2} {s}", .{dollars, money.currency});
+                    error_text = formatted;
+                },
+                else => {
+                    error_text = "unsupported_type";
+                },
+            }
+
+            // Write to stderr with newline
+            const stderr = std.io.getStdErr().writer();
+            try stderr.writeAll(error_text);
+            try stderr.writeAll("\n");
+        }
+        return MBLValue{ .text = try memory.Text.init(self.allocator, "") };
     }
 
     fn handleTextMethod(self: *Interpreter, text: memory.Text, method_name: []const u8, arguments: []parser.Expression) anyerror!MBLValue {

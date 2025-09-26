@@ -96,7 +96,7 @@
 - [x] stdin: `program.read(delimiter)` - Read from stdin with flexible delimiters
 - [x] stdin: `program.read()` - Read all stdin until EOF
 - [x] Interactive prompting: `program.prompt(text)` - Clean user input prompts
-- [ ] stderr: `program.error(msg)` - Write to stderr for error output
+- [x] stderr: `program.error(msg)` - Write to stderr for error output
 - [ ] File operations: `program.file_read()`, `program.file_write()`
 - [ ] CSV support: Read/write business data files
 - [ ] JSON integration: Parse and generate JSON data
