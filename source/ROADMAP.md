@@ -97,9 +97,11 @@
 - [x] stdin: `program.read()` - Read all stdin until EOF
 - [x] Interactive prompting: `program.prompt(text)` - Clean user input prompts
 - [x] stderr: `program.error(msg)` - Write to stderr for error output
-- [ ] File operations: `program.file_read()`, `program.file_write()`
-- [ ] CSV support: Read/write business data files
-- [ ] JSON integration: Parse and generate JSON data
+- [x] File import: `program.import("file.csv")` - Load entire files (JSON/CSV)
+- [x] CSV parsing: Auto-detect headers, create records with field names
+- [x] CSV iteration: `for record in customers:` works with imported data
+- [ ] File streaming: `program.open("file.csv")` with iterator support
+- [x] JSON basic support: Load JSON files as text (parsing planned)
 - [ ] Network requests: Basic HTTP GET/POST operations
 - [ ] Database connections: Simple query capabilities
 - [ ] Configuration file support

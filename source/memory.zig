@@ -692,6 +692,7 @@ pub const MBLValue = union(enum) {
     list: List,
     function: Function,
     activator: Activator,
+    file_handle: FileHandle,
     unknown: void,  // Ternary logic: true, false, unknown
 
     pub fn deinit(self: *MBLValue, allocator: std.mem.Allocator) void {
@@ -706,6 +707,7 @@ pub const MBLValue = union(enum) {
             .list => |*l| l.deinit(),
             .function => |*f| f.deinit(),
             .activator => |*a| a.deinit(),
+            .file_handle => |*f| f.deinit(),
             .unknown => {}, // No cleanup needed
         }
     }
@@ -749,6 +751,10 @@ pub const MBLValue = union(enum) {
                 const str = try std.fmt.allocPrint(allocator, "[Activator: {s}]", .{a.name});
                 return Text{ .data = str };
             },
+            .file_handle => {
+                const str = try std.fmt.allocPrint(allocator, "[FileHandle]", .{});
+                return Text{ .data = str };
+            },
             .unknown => {
                 return Text.init(allocator, "Unknown");
             },
@@ -771,7 +777,7 @@ pub const MBLValue = union(enum) {
             .money => |m| return if (m.value != 0) .true_val else .false_val,
             .time => |t| return if (t.value != 0) .true_val else .false_val,
             .duration => |d| return if (d.value != 0) .true_val else .false_val,
-            .record, .list, .function, .activator => return .true_val,
+            .record, .list, .function, .activator, .file_handle => return .true_val,
             .unknown => return .unknown,
         }
     }
@@ -878,7 +884,189 @@ pub const MBLValue = union(enum) {
                 // Similar to functions, just reference copy for now
                 return MBLValue{ .activator = a };
             },
+            .file_handle => |f| {
+                // File handles should not be deep copied - just reference
+                return MBLValue{ .file_handle = f };
+            },
             .unknown => return MBLValue{ .unknown = {} },
+        }
+    }
+};
+
+pub const FileHandle = struct {
+    file: std.fs.File,
+    config: FileConfig,
+    current_line: usize,
+    headers: ?[][]const u8,
+    allocator: std.mem.Allocator,
+    buffer: std.ArrayList(u8),
+    at_eof: bool,
+
+    pub const FileConfig = struct {
+        format: FileFormat,
+        delimiter: []const u8,
+        headers: bool,
+        quotes: bool,
+
+        pub const FileFormat = enum {
+            csv,
+            json,
+            fixed_width,
+        };
+
+        pub fn default() FileConfig {
+            return FileConfig{
+                .format = .csv,
+                .delimiter = ",",
+                .headers = true,
+                .quotes = true,
+            };
+        }
+    };
+
+    pub fn init(allocator: std.mem.Allocator, path: []const u8, config: FileConfig) !FileHandle {
+        const file = try std.fs.cwd().openFile(path, .{});
+        return FileHandle{
+            .file = file,
+            .config = config,
+            .current_line = 0,
+            .headers = null,
+            .allocator = allocator,
+            .buffer = std.ArrayList(u8).init(allocator),
+            .at_eof = false,
+        };
+    }
+
+    pub fn deinit(self: *FileHandle) void {
+        self.file.close();
+        self.buffer.deinit();
+        if (self.headers) |headers| {
+            for (headers) |header| {
+                self.allocator.free(header);
+            }
+            self.allocator.free(headers);
+        }
+    }
+
+    pub fn readRecord(self: *FileHandle) !?MBLValue {
+        if (self.at_eof) return null;
+
+        // Read next line from file
+        const line = self.readLine() catch |err| {
+            if (err == error.EndOfStream) {
+                self.at_eof = true;
+                return null;
+            }
+            return err;
+        } orelse {
+            self.at_eof = true;
+            return null;
+        };
+        defer self.allocator.free(line);
+
+        self.current_line += 1;
+
+        // Parse based on format
+        switch (self.config.format) {
+            .csv => {
+                return try self.parseCSVLine(line);
+            },
+            .json => {
+                // JSON parsing would be different - not line-based
+                return MBLValue{ .text = try Text.init(self.allocator, line) };
+            },
+            .fixed_width => {
+                // Fixed width parsing
+                return MBLValue{ .text = try Text.init(self.allocator, line) };
+            },
+        }
+    }
+
+    fn readLine(self: *FileHandle) !?[]u8 {
+        self.buffer.clearRetainingCapacity();
+
+        const reader = self.file.reader();
+        reader.streamUntilDelimiter(self.buffer.writer(), '\n', null) catch |err| {
+            if (err == error.EndOfStream) {
+                if (self.buffer.items.len == 0) {
+                    return null; // EOF with no data
+                }
+                // EOF but we have data - return it
+            } else {
+                return err;
+            }
+        };
+
+        return try self.allocator.dupe(u8, self.buffer.items);
+    }
+
+    fn parseCSVLine(self: *FileHandle, line: []const u8) !MBLValue {
+        var fields = std.ArrayList([]const u8).init(self.allocator);
+        defer fields.deinit();
+
+        // Simple CSV parsing for now - split on delimiter
+        var start: usize = 0;
+        var i: usize = 0;
+        var in_quotes = false;
+
+        while (i < line.len) {
+            const char = line[i];
+
+            if (self.config.quotes and char == '"') {
+                in_quotes = !in_quotes;
+            } else if (!in_quotes and std.mem.eql(u8, line[i..@min(i + self.config.delimiter.len, line.len)], self.config.delimiter)) {
+                // Found delimiter
+                var field = line[start..i];
+                if (self.config.quotes and field.len >= 2 and field[0] == '"' and field[field.len - 1] == '"') {
+                    field = field[1..field.len - 1]; // Remove quotes
+                }
+                try fields.append(try self.allocator.dupe(u8, field));
+                start = i + self.config.delimiter.len;
+                i += self.config.delimiter.len;
+                continue;
+            }
+            i += 1;
+        }
+
+        // Add final field
+        var field = line[start..];
+        if (self.config.quotes and field.len >= 2 and field[0] == '"' and field[field.len - 1] == '"') {
+            field = field[1..field.len - 1];
+        }
+        try fields.append(try self.allocator.dupe(u8, field));
+
+        // Handle headers on first line
+        if (self.config.headers and self.current_line == 1 and self.headers == null) {
+            // Store headers and return null to skip this record
+            self.headers = try self.allocator.alloc([]const u8, fields.items.len);
+            for (fields.items, 0..) |header_field, idx| {
+                self.headers.?[idx] = try self.allocator.dupe(u8, header_field);
+            }
+            // Free the fields since we copied them
+            for (fields.items) |temp_field| {
+                self.allocator.free(temp_field);
+            }
+            return try self.readRecord(); // Recursively read next record
+        }
+
+        // Create record or list based on headers
+        if (self.config.headers and self.headers != null) {
+            // Return as record with field names
+            var record = Record.init(self.allocator);
+            for (fields.items, 0..) |field_data, idx| {
+                const field_name = if (idx < self.headers.?.len) self.headers.?[idx] else "unknown";
+                // field_data is already copied by parseCSVLine, so we can use it directly
+                try record.set(field_name, MBLValue{ .text = Text{ .data = field_data } });
+            }
+            return MBLValue{ .record = record };
+        } else {
+            // Return as list
+            var list = List.init(self.allocator);
+            for (fields.items) |field_data| {
+                // field_data is already copied by parseCSVLine, so we can use it directly
+                try list.append(MBLValue{ .text = Text{ .data = field_data } });
+            }
+            return MBLValue{ .list = list };
         }
     }
 };

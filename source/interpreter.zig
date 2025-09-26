@@ -623,6 +623,12 @@ pub const Interpreter = struct {
                 if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "error")) {
                     return try self.handleProgramError(call_expr.arguments);
                 }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "open")) {
+                    return try self.handleProgramOpen(call_expr.arguments);
+                }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "import")) {
+                    return try self.handleProgramImport(call_expr.arguments);
+                }
                 if (std.mem.eql(u8, obj_name, "symbol") and std.mem.eql(u8, method_name, "unicode")) {
                     return try self.handleSymbolUnicode(call_expr.arguments);
                 }
@@ -890,6 +896,186 @@ pub const Interpreter = struct {
             try stderr.writeAll("\n");
         }
         return MBLValue{ .text = try memory.Text.init(self.allocator, "") };
+    }
+
+    fn handleProgramOpen(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len == 0 or arguments.len > 2) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "open() requires 1 or 2 arguments: path and optional config") };
+        }
+
+        // Get file path
+        const path_value = try self.evaluateExpression(arguments[0]);
+        const path = switch (path_value) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "open() path must be text") };
+            },
+        };
+
+        // Get configuration (optional)
+        var config = memory.FileHandle.FileConfig.default();
+        if (arguments.len == 2) {
+            const config_value = try self.evaluateExpression(arguments[1]);
+            switch (config_value) {
+                .record => |record| {
+                    // Parse configuration from record
+                    if (record.data.get("delimiter")) |delim| {
+                        if (delim == .text) {
+                            config.delimiter = delim.text.data;
+                        }
+                    }
+                    if (record.data.get("headers")) |headers| {
+                        if (headers == .boolean) {
+                            config.headers = headers.boolean.value;
+                        }
+                    }
+                    if (record.data.get("quotes")) |quotes| {
+                        if (quotes == .boolean) {
+                            config.quotes = quotes.boolean.value;
+                        }
+                    }
+                },
+                else => {
+                    return MBLValue{ .text = try memory.Text.init(self.allocator, "open() config must be a record") };
+                },
+            }
+        } else {
+            // Auto-detect format from extension
+            if (std.mem.endsWith(u8, path, ".json")) {
+                config.format = .json;
+            } else {
+                config.format = .csv;
+            }
+        }
+
+        // Create file handle
+        const file_handle = memory.FileHandle.init(self.allocator, path, config) catch |err| {
+            const error_msg = try std.fmt.allocPrint(self.allocator, "Failed to open file '{s}': {}", .{ path, err });
+            return MBLValue{ .text = memory.Text{ .data = error_msg } };
+        };
+
+        return MBLValue{ .file_handle = file_handle };
+    }
+
+    fn handleProgramImport(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len == 0 or arguments.len > 2) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "import() requires 1 or 2 arguments: path and optional format") };
+        }
+
+        // Get file path
+        const path_value = try self.evaluateExpression(arguments[0]);
+        const path = switch (path_value) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "import() path must be text") };
+            },
+        };
+
+        // Read entire file
+        const file = std.fs.cwd().openFile(path, .{}) catch |err| {
+            const error_msg = try std.fmt.allocPrint(self.allocator, "Failed to open file '{s}': {}", .{ path, err });
+            return MBLValue{ .text = memory.Text{ .data = error_msg } };
+        };
+        defer file.close();
+
+        const file_contents = file.readToEndAlloc(self.allocator, 10 * 1024 * 1024) catch |err| { // 10MB limit
+            const error_msg = try std.fmt.allocPrint(self.allocator, "Failed to read file '{s}': {}", .{ path, err });
+            return MBLValue{ .text = memory.Text{ .data = error_msg } };
+        };
+
+        // Determine format
+        var format: []const u8 = "auto";
+        if (arguments.len == 2) {
+            const format_value = try self.evaluateExpression(arguments[1]);
+            if (format_value == .text) {
+                format = format_value.text.data;
+            }
+        } else {
+            // Auto-detect from extension
+            if (std.mem.endsWith(u8, path, ".json")) {
+                format = "json";
+            } else if (std.mem.endsWith(u8, path, ".csv")) {
+                format = "csv";
+            }
+        }
+
+        // Parse based on format
+        if (std.mem.eql(u8, format, "json")) {
+            // Simple JSON parsing - just return as text for now
+            return MBLValue{ .text = memory.Text{ .data = file_contents } };
+        } else if (std.mem.eql(u8, format, "csv") or std.mem.eql(u8, format, "auto")) {
+            // Parse CSV into list of records/lists
+            return try self.parseCSVFile(file_contents);
+        } else {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "Unsupported format. Use 'csv' or 'json'") };
+        }
+    }
+
+    fn parseCSVFile(self: *Interpreter, contents: []const u8) !MBLValue {
+        var lines = std.mem.split(u8, contents, "\n");
+        var result_list = memory.List.init(self.allocator);
+
+        var headers: ?[][]const u8 = null;
+        var line_number: usize = 0;
+
+        while (lines.next()) |line| {
+            if (line.len == 0) continue; // Skip empty lines
+            line_number += 1;
+
+            // Parse CSV line (simple implementation)
+            var fields = std.ArrayList([]const u8).init(self.allocator);
+            defer fields.deinit();
+
+            var start: usize = 0;
+            var i: usize = 0;
+            while (i < line.len) {
+                if (line[i] == ',') {
+                    try fields.append(line[start..i]);
+                    start = i + 1;
+                }
+                i += 1;
+            }
+            try fields.append(line[start..]);
+
+            if (line_number == 1) {
+                // Treat first line as headers
+                headers = try self.allocator.alloc([]const u8, fields.items.len);
+                for (fields.items, 0..) |field, idx| {
+                    headers.?[idx] = try self.allocator.dupe(u8, field);
+                }
+                continue; // Skip adding header row to data
+            }
+
+            // Create record or list
+            if (headers) |h| {
+                var record = memory.Record.init(self.allocator);
+                for (fields.items, 0..) |field, idx| {
+                    const field_name = if (idx < h.len) h[idx] else "unknown";
+                    // Make sure to copy the field data since it's a slice of file content
+                    const field_copy = try self.allocator.dupe(u8, field);
+                    try record.set(field_name, MBLValue{ .text = memory.Text{ .data = field_copy } });
+                }
+                try result_list.append(MBLValue{ .record = record });
+            } else {
+                var list = memory.List.init(self.allocator);
+                for (fields.items) |field| {
+                    // Make sure to copy the field data since it's a slice of file content
+                    const field_copy = try self.allocator.dupe(u8, field);
+                    try list.append(MBLValue{ .text = memory.Text{ .data = field_copy } });
+                }
+                try result_list.append(MBLValue{ .list = list });
+            }
+        }
+
+        // Clean up headers
+        if (headers) |h| {
+            for (h) |header| {
+                self.allocator.free(header);
+            }
+            self.allocator.free(h);
+        }
+
+        return MBLValue{ .list = result_list };
     }
 
     fn handleTextMethod(self: *Interpreter, text: memory.Text, method_name: []const u8, arguments: []parser.Expression) anyerror!MBLValue {
