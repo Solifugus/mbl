@@ -94,6 +94,8 @@
 
 ## 📁 v0.11.0 - I/O & External Data (IN PROGRESS)
 - [x] stdin: `program.read(delimiter)` - Read from stdin with flexible delimiters
+- [x] stdin: `program.read()` - Read all stdin until EOF
+- [x] Interactive prompting: `program.prompt(text)` - Clean user input prompts
 - [ ] stderr: `program.error(msg)` - Write to stderr for error output
 - [ ] File operations: `program.file_read()`, `program.file_write()`
 - [ ] CSV support: Read/write business data files

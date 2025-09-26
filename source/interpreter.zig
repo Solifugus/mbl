@@ -617,6 +617,9 @@ pub const Interpreter = struct {
                 if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "read")) {
                     return try self.handleProgramRead(call_expr.arguments);
                 }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "prompt")) {
+                    return try self.handleProgramPrompt(call_expr.arguments);
+                }
                 if (std.mem.eql(u8, obj_name, "symbol") and std.mem.eql(u8, method_name, "unicode")) {
                     return try self.handleSymbolUnicode(call_expr.arguments);
                 }
@@ -711,8 +714,15 @@ pub const Interpreter = struct {
     }
 
     fn handleProgramRead(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        // No arguments means read to EOF
+        if (arguments.len == 0) {
+            const stdin = std.io.getStdIn().reader();
+            const all_input = try stdin.readAllAlloc(self.allocator, 1024 * 1024); // 1MB limit
+            return MBLValue{ .text = memory.Text{ .data = all_input } };
+        }
+
         if (arguments.len != 1) {
-            return MBLValue{ .text = try memory.Text.init(self.allocator, "read() requires exactly one delimiter argument") };
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "read() requires zero or one delimiter argument") };
         }
 
         const delimiter_value = self.evaluateExpression(arguments[0]) catch |err| {
@@ -777,6 +787,63 @@ pub const Interpreter = struct {
                     }
                 }
             }
+        }
+
+        // EOF reached, return whatever we have
+        const result = try self.allocator.dupe(u8, input_buffer.items);
+        return MBLValue{ .text = memory.Text{ .data = result } };
+    }
+
+    fn handleProgramPrompt(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len != 1) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "prompt() requires exactly one text argument") };
+        }
+
+        const prompt_value = self.evaluateExpression(arguments[0]) catch |err| {
+            std.log.warn("Error evaluating prompt text: {!}", .{err});
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "error") };
+        };
+
+        // Get prompt text
+        const prompt_text = switch (prompt_value) {
+            .text => |text| text.data,
+            .number => |num| blk: {
+                const formatted = try std.fmt.allocPrint(self.allocator, "{d}", .{num.value});
+                break :blk formatted;
+            },
+            .boolean => |bool_val| if (bool_val.value) "true" else "false",
+            .money => |money| blk: {
+                const dollars = @as(f64, @floatFromInt(money.value)) / 100.0;
+                const formatted = try std.fmt.allocPrint(self.allocator, "${d:.2} {s}", .{dollars, money.currency});
+                break :blk formatted;
+            },
+            else => "unsupported_prompt_type",
+        };
+
+        // Display prompt without newline
+        const stdout = std.io.getStdOut().writer();
+        try stdout.writeAll(prompt_text);
+
+        // Read response until newline
+        const stdin = std.io.getStdIn().reader();
+        var input_buffer = std.ArrayList(u8).init(self.allocator);
+        defer input_buffer.deinit();
+
+        while (true) {
+            const byte = stdin.readByte() catch |err| {
+                if (err == error.EndOfStream) {
+                    break;
+                }
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "read error") };
+            };
+
+            if (byte == '\n') {
+                // Found newline, return input without the newline
+                const result = try self.allocator.dupe(u8, input_buffer.items);
+                return MBLValue{ .text = memory.Text{ .data = result } };
+            }
+
+            try input_buffer.append(byte);
         }
 
         // EOF reached, return whatever we have
