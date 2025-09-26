@@ -1,4 +1,4 @@
-# MBL Language Reference v0.8.0
+# MBL Language Reference v0.9.0
 
 **Modern Business Language (MBL)** - A programming language designed for business operations with minimal learning curve and maximum readability.
 
@@ -10,12 +10,13 @@
 4. [Variables and Assignment](#variables-and-assignment)
 5. [Expressions and Operators](#expressions-and-operators)
 6. [Control Flow](#control-flow)
-7. [Functions](#functions)
-8. [Built-in Operations](#built-in-operations)
-9. [Scope and Context](#scope-and-context)
-10. [Comments and Documentation](#comments-and-documentation)
-11. [Standard Library](#standard-library) *(Planned)*
-12. [Error Handling](#error-handling) *(Planned)*
+7. [Functions and Procedures](#functions-and-procedures)
+8. [Activators and Reactive Programming](#activators-and-reactive-programming) *(Planned)*
+9. [Built-in Operations](#built-in-operations)
+10. [Scope and Context](#scope-and-context)
+11. [Comments and Documentation](#comments-and-documentation)
+12. [Standard Library](#standard-library) *(Planned)*
+13. [Error Handling](#error-handling) *(Planned)*
 
 ---
 
@@ -36,22 +37,52 @@ name = "Alice"
 program.write("Hello, " + name + "!")
 ```
 
+### Business Logic Example
+```mbl
+# Employee evaluation with new syntax
+evaluate_employee(name, performance):
+    program.write("Evaluating: " + name)
+
+    if performance > 90:
+        program.write("Excellent performance!")
+        bonus = 1000
+    else if performance > 75:
+        program.write("Good performance")
+        bonus = 500
+    else:
+        program.write("Needs improvement")
+        bonus = 0
+
+    return bonus
+
+# Process multiple employees
+employees = ["Alice", "Bob", "Charlie"]
+for emp in employees:
+    bonus = evaluate_employee(emp, 85)
+    program.write(emp + " bonus: $" + bonus)
+```
+
 ---
 
 ## Syntax Fundamentals
 
 ### Indentation-Based Structure
-MBL uses indentation (like Python) to define code blocks:
+MBL uses Python-style indentation with colons to define code blocks:
 
 ```mbl
-if budget > 1000 then
+if budget > 1000:
     program.write("Large budget")
     discount = 0.1
-else
+else:
     program.write("Standard budget")
     discount = 0.05
-end
 ```
+
+**Key Features:**
+- **Colons (`:`)** mark the start of indented blocks
+- **4-space indentation** defines scope levels
+- **No explicit `end` keywords** - blocks end when indentation decreases
+- **Multi-line statements** supported within each indentation level
 
 ### Case Sensitivity
 MBL is case-sensitive. `Name` and `name` are different variables.
@@ -304,74 +335,125 @@ name = Nothing + "John"            # "John"
 
 ### If Statements
 ```mbl
-if budget > 100000 then
+if budget > 100000:
     program.write("Large budget approved")
     discount = 0.15
-else
+else:
     program.write("Standard budget")
     discount = 0.05
-end
 ```
 
-**Nested conditions:**
+**Multi-line if blocks:**
 ```mbl
-if score >= 90 then
+if score >= 90:
+    program.write("Excellent performance!")
+    program.write("Bonus awarded")
+    bonus = salary * 0.1
     grade = "A"
-else if score >= 80 then
-    grade = "B"
-else if score >= 70 then
-    grade = "C"
-else
-    grade = "F"
-end
+```
+
+**Nested if/else statements:**
+```mbl
+if temperature > 80:
+    program.write("Hot weather")
+    if humidity > 70:
+        program.write("Very humid - stay hydrated")
+        warning = "Heat warning"
+    else:
+        program.write("Dry heat")
+else:
+    program.write("Comfortable weather")
 ```
 
 ### While Loops
 ```mbl
 count = 1
-while count <= 10 do
+while count <= 10:
     program.write("Count: " + count)
     count = count + 1
-end
+```
+
+**Multi-line while loops:**
+```mbl
+balance = 1000
+while balance > 0:
+    program.write("Balance: $" + balance)
+    withdrawal = 100
+    balance = balance - withdrawal
+    program.write("Withdrew: $" + withdrawal)
 ```
 
 ### For Loops
 **Iterate over lists:**
 ```mbl
 departments = ["Sales", "IT", "HR"]
-for dept in departments do
+for dept in departments:
     program.write("Department: " + dept)
-end
+```
+
+**Multi-line for loops:**
+```mbl
+employees = ["Alice", "Bob", "Charlie"]
+for employee in employees:
+    program.write("Processing: " + employee)
+    program.write("Status: Active")
+    program.write("Department assigned")
 ```
 
 **Iterate over records:**
 ```mbl
 employee = {name: "John", age: 30, salary: 75000}
-for field in employee do
+for field in employee:
     program.write("Field: " + field)  # Iterates over keys
-end
 ```
 
 ### Loop Control
 ```mbl
-for i in [1, 2, 3, 4, 5] do
-    if i == 3 then
-        continue    # Skip to next iteration
-    end
-    if i == 5 then
-        break      # Exit loop completely
-    end
+for i in [1, 2, 3, 4, 5]:
+    if i == 3:
+        skip        # Skip to next iteration (replaces 'continue')
+    if i == 5:
+        breakout    # Exit loop completely (replaces 'break')
     program.write(i)
-end
 ```
 
-### Goto and Labels
+**Keywords:**
+- **`skip`** - Continue to next iteration (replaces old `continue` keyword)
+- **`breakout`** - Exit loop completely (replaces old `break` keyword)
+
+### Todo Statements
+For incomplete code blocks during development:
+```mbl
+if user_authenticated:
+    todo  # Placeholder for future implementation
+program.write("Processing complete")
+```
+
+### Nested Control Structures
+**Complex nesting example:**
+```mbl
+for department in ["Sales", "IT", "HR"]:
+    program.write("Department: " + department)
+
+    employees = get_employees(department)
+    for employee in employees:
+        if employee.active:
+            program.write("Active: " + employee.name)
+            if employee.performance > 90:
+                program.write("High performer!")
+                bonus = employee.salary * 0.15
+            else:
+                bonus = employee.salary * 0.05
+        else:
+            program.write("Inactive: " + employee.name)
+```
+
+### Goto and Labels *(Legacy)*
 ```mbl
 start:
     program.write("At start")
-    if condition then
+    if condition:
         goto end
-    end
     program.write("Middle section")
 
 end:
@@ -382,54 +464,149 @@ end:
 
 ---
 
-## Functions
+## Functions and Procedures
 
-### Function Definition
+MBL distinguishes between **Functions** (with parameters) and **Procedures** (without parameters) to clarify their roles in business logic.
+
+### Functions (With Parameters)
+Functions accept parameters and typically return values:
+
 ```mbl
-function calculate_tax(income, rate)
+calculate_tax(income, rate):
     tax = income * rate
     return tax
-end
 ```
 
-### Function Calls
+**Function calls:**
 ```mbl
 employee_tax = calculate_tax(75000, 0.25)
 program.write("Tax owed: " + employee_tax)
 ```
 
-### Parameters and Return Values
+**Multi-line functions:**
 ```mbl
-function process_sale(price, discount_rate)
-    if discount_rate > 0 then
+process_sale(price, discount_rate):
+    program.write("Processing sale...")
+
+    if discount_rate > 0:
+        program.write("Applying discount")
         final_price = price * (1 - discount_rate)
-    else
+    else:
         final_price = price
-    end
+
+    program.write("Final price: " + final_price)
     return final_price
-end
 
 sale_amount = process_sale($100, 0.1)  # Returns $90
+```
+
+### Procedures (Without Parameters)
+Procedures perform operations without parameters:
+
+```mbl
+initialize_system():
+    program.write("Starting system...")
+    load_configuration()
+    setup_database()
+    program.write("System ready!")
+
+# Procedure call
+initialize_system()
+```
+
+**Procedures vs Functions:**
+- **Functions** have parameters: `calculate_tax(income, rate):`
+- **Procedures** have no parameters: `initialize_system():`
+- Both can access global variables and program scope
+- Both support multi-line indented blocks
+
+### Complex Function Example
+```mbl
+evaluate_employee(name, performance, years):
+    program.write("Evaluating: " + name)
+
+    base_score = performance * 10
+    experience_bonus = years * 2
+
+    if performance > 90:
+        program.write("Excellent performer")
+        bonus_multiplier = 1.5
+    else if performance > 75:
+        program.write("Good performer")
+        bonus_multiplier = 1.2
+    else:
+        program.write("Needs improvement")
+        bonus_multiplier = 1.0
+
+    total_score = (base_score + experience_bonus) * bonus_multiplier
+    return total_score
+
+# Function call
+score = evaluate_employee("Alice", 95, 3)
+program.write("Final score: " + score)
+```
+
+### Recursive Functions
+```mbl
+factorial(n):
+    if n <= 1:
+        return 1
+    else:
+        return n * factorial(n - 1)
+
+result = factorial(5)  # Returns 120
 ```
 
 ### Scope and Parameters
 - Function parameters create local variables
 - Local variables don't affect global scope
-- Functions can access global variables
+- Functions and procedures can access global variables via `program.variable`
 - Return values are copied (deep copy for complex types)
+- Use `super.variable` to access parent scope in nested contexts
 
-### Recursive Functions
+---
+
+## Activators and Reactive Programming *(Planned)*
+
+Activators provide reactive programming capabilities for business rules that execute automatically when conditions become true.
+
+### Anytime Blocks *(Planned)*
+Activators use the `anytime` keyword to create reactive conditions:
+
 ```mbl
-function factorial(n)
-    if n <= 1 then
-        return 1
-    else
-        return n * factorial(n - 1)
-    end
-end
+# React when inventory gets low
+anytime inventory_count < 10:
+    program.write("Low inventory alert!")
+    send_notification("Reorder needed")
+    reorder_flag = true
 
-result = factorial(5)  # Returns 120
+# React to budget changes
+anytime budget > 100000:
+    program.write("Large budget - executive approval required")
+    approval_required = true
 ```
+
+### Activator Features *(Planned)*
+- **Automatic execution**: Runs when condition becomes true
+- **Infinite loop prevention**: Built-in safeguards against recursive triggers
+- **Business rule focus**: Designed for business logic and alerts
+- **Global scope access**: Can read and modify program-level variables
+
+### Complex Activator Example *(Planned)*
+```mbl
+# Multi-condition business rule
+anytime (sales_total > monthly_target) and (month_end_approaching):
+    program.write("Sales target exceeded!")
+
+    bonus_pool = sales_total * 0.05
+    team_notification("Bonus earned: $" + bonus_pool)
+
+    if sales_total > monthly_target * 1.5:
+        program.write("Exceptional performance!")
+        executive_report = generate_report()
+```
+
+**Note**: Activators are planned for v0.10.0 and will provide powerful reactive programming capabilities for business applications.
 
 ---
 
@@ -576,24 +753,42 @@ end
 
 ## Implementation Status
 
-### ✅ Fully Implemented (v0.8.0)
-- All data types (Text, Number, Money, Boolean, Time, Record, List)
-- Variable assignment and scoping
-- All expressions and operators
-- Complete control flow (if/else, while, for, break, continue, goto/labels)
-- Function definitions and calls with proper scoping
-- Built-in `program.write()` and scope access (`program`, `super`)
-- Comments and basic documentation
+### ✅ Fully Implemented (v0.9.0)
+- **All data types**: Text, Number, Money, Boolean, Time, Record, List
+- **Ternary logic system**: true/false/Unknown with complete truth tables
+- **Universal type conversion**: All types convert through Text as intermediary
+- **Nothing keyword**: Proper empty string and arithmetic handling
+- **Variable assignment and scoping**: Complete lexical scoping with `program`/`super` access
+- **All expressions and operators**: Arithmetic, comparison, logical with ternary support
+- **Complete control flow**:
+  - **Colon-based syntax** (`if:`, `while:`, `for:`)
+  - **Python-style indentation** (4-space levels, no `end` keywords)
+  - **Multi-line indented blocks** for all constructs
+  - **Nested control structures** (unlimited depth)
+  - **Loop control**: `skip` (continue) and `breakout` (break)
+  - **Todo statements** for development placeholders
+- **Functions and procedures**: Parameter-based distinction with colon syntax
+- **Built-in operations**: `program.write()` and scope access
+- **Comments and documentation**: Single-line comments with `#`
 
 ### 🚧 Partially Implemented
-- Time operations (basic parsing done, arithmetic/formatting planned)
-- Money types (USD only, multiple currencies planned)
+- **Time operations**: Basic parsing implemented, arithmetic/formatting planned
+- **Money types**: USD support only, multiple currencies planned
+- **Function vs Procedure parsing**: Syntax defined, full implementation in progress
 
 ### 📋 Planned Features
-- **v0.9.0**: Activators and reactive programming (`when...do` syntax)
-- **v0.10.0**: File I/O, CSV/JSON support, network requests
-- **v0.11.0**: Error handling (try/catch), multi-line comments, modules
-- **v1.0.0**: Complete standard library, IDE support, debugging tools
+- **v0.10.0**:
+  - **Activators**: `anytime` keyword for reactive programming
+  - **Enhanced loop control**: Full `skip`/`breakout` implementation
+  - **File I/O**: CSV/JSON support, network requests
+- **v0.11.0**:
+  - **Error handling**: try/catch blocks
+  - **Multi-line comments**: `### ... ###` syntax
+  - **Module system**: Import/export capabilities
+- **v1.0.0**:
+  - **Complete standard library**: Math, string, date functions
+  - **IDE support**: Language server, syntax highlighting
+  - **Debugging tools**: Step-through debugging, profiling
 
 ---
 
@@ -640,9 +835,12 @@ statement := assignment_stmt
            | while_stmt
            | for_stmt
            | function_def
+           | procedure_def
+           | activator_def
            | return_stmt
-           | break_stmt
-           | continue_stmt
+           | skip_stmt
+           | breakout_stmt
+           | todo_stmt
            | goto_stmt
            | label_stmt
 
@@ -651,13 +849,26 @@ assignment_stmt := IDENTIFIER "=" expression
 
 expression_stmt := expression
 
-if_stmt := "if" expression "then" statement* ("else" statement*)? "end"
+if_stmt := "if" expression ":" NEWLINE INDENT statement_block
+           ("else" ":" NEWLINE INDENT statement_block)?
 
-while_stmt := "while" expression "do" statement* "end"
+while_stmt := "while" expression ":" NEWLINE INDENT statement_block
 
-for_stmt := "for" IDENTIFIER "in" expression "do" statement* "end"
+for_stmt := "for" IDENTIFIER "in" expression ":" NEWLINE INDENT statement_block
 
-function_def := "function" IDENTIFIER "(" parameter_list? ")" statement* "end"
+function_def := IDENTIFIER "(" parameter_list? ")" ":" NEWLINE INDENT statement_block
+
+procedure_def := IDENTIFIER "()" ":" NEWLINE INDENT statement_block
+
+activator_def := "anytime" expression ":" NEWLINE INDENT statement_block
+
+statement_block := statement+ DEDENT
+
+skip_stmt := "skip"
+
+breakout_stmt := "breakout"
+
+todo_stmt := "todo"
 
 expression := logical_or_expr
 
@@ -691,4 +902,4 @@ list_literal := "[" (expression ("," expression)*)? "]"
 
 ---
 
-*This reference covers MBL v0.8.0. For the latest updates and planned features, see the [ROADMAP.md](ROADMAP.md) file.*
+*This reference covers MBL v0.9.0 with complete colon-based syntax and Python-style indentation. For the latest updates and planned features, see the [ROADMAP.md](ROADMAP.md) file.*

@@ -28,6 +28,8 @@ pub const Interpreter = struct {
     functions: std.HashMap([]const u8, parser.FunctionDeclaration, std.hash_map.StringContext, std.hash_map.default_max_load_percentage), // Function registry
     return_value: ?MBLValue, // Store return value from functions
     quiet_mode: bool, // Suppress debug output when true
+    activators: std.ArrayList(parser.ActivatorDeclaration), // List of registered activators
+    executing_activator: bool, // Prevent recursion in activator execution
 
     pub fn init(allocator: std.mem.Allocator, mem: *Memory) Interpreter {
         return Interpreter{
@@ -40,6 +42,8 @@ pub const Interpreter = struct {
             .functions = std.HashMap([]const u8, parser.FunctionDeclaration, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(allocator),
             .return_value = null,
             .quiet_mode = false,
+            .activators = std.ArrayList(parser.ActivatorDeclaration).init(allocator),
+            .executing_activator = false,
         };
     }
 
@@ -50,6 +54,9 @@ pub const Interpreter = struct {
 
         // Clean up function registry (no need to free individual functions since we store references)
         self.functions.deinit();
+
+        // Clean up activators
+        self.activators.deinit();
     }
 
     fn log(self: *Interpreter, comptime fmt: []const u8, args: anytype) void {
@@ -104,6 +111,8 @@ pub const Interpreter = struct {
             if (scope.data.contains(name)) {
                 try scope.set(name, value);
                 std.log.info("📝 Updated variable '{s}' in local scope at depth {}", .{name, i});
+                // Check activators after variable assignment
+                self.checkActivators();
                 return;
             }
         }
@@ -112,6 +121,8 @@ pub const Interpreter = struct {
         if (self.memory.program.data.contains(name)) {
             try self.memory.program.set(name, value);
             self.log("📝 Updated variable '{s}' in program scope", .{name});
+            // Check activators after variable assignment
+            self.checkActivators();
             return;
         }
 
@@ -124,6 +135,9 @@ pub const Interpreter = struct {
             try self.memory.program.set(name, value);
             self.log("📝 Created variable '{s}' in program scope", .{name});
         }
+
+        // Check activators after variable assignment (with recursion prevention)
+        self.checkActivators();
     }
 
     // Create a variable in the current local scope (for function parameters)
@@ -243,8 +257,8 @@ pub const Interpreter = struct {
             .return_statement => |return_stmt| {
                 try self.executeReturnStatement(return_stmt);
             },
-            else => {
-                std.log.warn("Statement type {s} not yet supported", .{@tagName(stmt)});
+            .activator_declaration => |activator| {
+                try self.registerActivator(activator);
             },
         }
     }
@@ -1017,32 +1031,61 @@ pub const Interpreter = struct {
         return MBLValue{ .boolean = memory.Boolean{ .value = greater.boolean.value or equal.boolean.value } };
     }
 
-    fn performLogicalAnd(self: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {
-        const left_truthy = self.isTruthy(left);
-        if (!left_truthy) {
-            return MBLValue{ .boolean = memory.Boolean{ .value = false } };
-        }
-        const right_truthy = self.isTruthy(right);
-        return MBLValue{ .boolean = memory.Boolean{ .value = right_truthy } };
+    fn performLogicalAnd(_: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {
+        const left_logic = left.isTruthy();
+        const right_logic = right.isTruthy();
+
+        // Ternary logic AND truth table
+        const result = switch (left_logic) {
+            .true_val => switch (right_logic) {
+                .true_val => memory.TernaryLogic.true_val,
+                .false_val => memory.TernaryLogic.false_val,
+                .unknown => memory.TernaryLogic.unknown,
+            },
+            .false_val => memory.TernaryLogic.false_val, // false dominates
+            .unknown => switch (right_logic) {
+                .false_val => memory.TernaryLogic.false_val, // false dominates
+                else => memory.TernaryLogic.unknown,
+            },
+        };
+
+        return switch (result) {
+            .true_val => MBLValue{ .boolean = memory.Boolean{ .value = true } },
+            .false_val => MBLValue{ .boolean = memory.Boolean{ .value = false } },
+            .unknown => MBLValue{ .unknown = {} },
+        };
     }
 
-    fn performLogicalOr(self: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {
-        const left_truthy = self.isTruthy(left);
-        if (left_truthy) {
-            return MBLValue{ .boolean = memory.Boolean{ .value = true } };
-        }
-        const right_truthy = self.isTruthy(right);
-        return MBLValue{ .boolean = memory.Boolean{ .value = right_truthy } };
+    fn performLogicalOr(_: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {
+        const left_logic = left.isTruthy();
+        const right_logic = right.isTruthy();
+
+        // Ternary logic OR truth table
+        const result = switch (left_logic) {
+            .true_val => memory.TernaryLogic.true_val, // true dominates
+            .false_val => switch (right_logic) {
+                .true_val => memory.TernaryLogic.true_val,
+                .false_val => memory.TernaryLogic.false_val,
+                .unknown => memory.TernaryLogic.unknown,
+            },
+            .unknown => switch (right_logic) {
+                .true_val => memory.TernaryLogic.true_val, // true dominates
+                else => memory.TernaryLogic.unknown,
+            },
+        };
+
+        return switch (result) {
+            .true_val => MBLValue{ .boolean = memory.Boolean{ .value = true } },
+            .false_val => MBLValue{ .boolean = memory.Boolean{ .value = false } },
+            .unknown => MBLValue{ .unknown = {} },
+        };
     }
 
-    fn isTruthy(self: *Interpreter, value: MBLValue) bool {
-        _ = self;
-        return switch (value) {
-            .boolean => |b| b.value,
-            .number => |n| n.value != 0.0,
-            .text => |t| t.data.len > 0,
-            .money => |m| m.value != 0,
-            else => true, // Other types are considered truthy
+    fn isTruthy(_: *Interpreter, value: MBLValue) bool {
+        // Legacy support - convert TernaryLogic to bool for older code
+        return switch (value.isTruthy()) {
+            .true_val => true,
+            .false_val, .unknown => false,
         };
     }
 
@@ -1387,6 +1430,64 @@ pub const Interpreter = struct {
         std.log.info("✅ Function '{s}' registered successfully", .{func_decl.name});
     }
 
+    fn registerActivator(self: *Interpreter, activator: parser.ActivatorDeclaration) !void {
+        self.log("⚡ Registering activator with condition", .{});
+
+        // Store the activator for later evaluation
+        try self.activators.append(activator);
+        self.log("✅ Activator registered successfully (total: {})", .{self.activators.items.len});
+    }
+
+    fn checkActivators(self: *Interpreter) void {
+        // Prevent recursion - if we're already executing an activator, don't check again
+        if (self.executing_activator) {
+            return;
+        }
+
+        // Check each registered activator
+        for (self.activators.items) |activator| {
+            // Evaluate the activator condition
+            const condition_result = self.evaluateExpression(activator.condition) catch |err| {
+                self.log("⚠️  Failed to evaluate activator condition: {}", .{err});
+                continue;
+            };
+
+            // Check if condition is true
+            const condition_is_true = switch (condition_result) {
+                .boolean => |b| b.value,
+                .unknown => false, // Unknown is not true
+                else => blk: {
+                    // Try to convert to boolean
+                    const bool_result = condition_result.convertToBoolean(self.allocator) catch |err| {
+                        self.log("⚠️  Failed to convert activator condition to boolean: {}", .{err});
+                        break :blk false;
+                    };
+                    break :blk bool_result.boolean.value;
+                }
+            };
+
+            if (condition_is_true) {
+                self.log("⚡ Activator condition became true - executing body", .{});
+
+                // Set recursion prevention flag
+                self.executing_activator = true;
+
+                // Execute the activator body
+                for (activator.body) |stmt| {
+                    self.executeStatement(stmt) catch |err| {
+                        self.log("⚠️  Error executing activator statement: {}", .{err});
+                        break; // Stop executing this activator's body on error
+                    };
+                }
+
+                // Clear recursion prevention flag
+                self.executing_activator = false;
+
+                self.log("✅ Activator execution completed", .{});
+            }
+        }
+    }
+
     fn executeReturnStatement(self: *Interpreter, return_stmt: parser.ReturnStatement) !void {
         if (return_stmt.value) |return_expr| {
             // Explicit return with value - make deep copy to avoid scope cleanup issues
@@ -1463,62 +1564,8 @@ pub const Interpreter = struct {
             return MBLValue{ .record = cloned_record };
         }
     }
-
-    fn performLogicalAnd(self: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {
-        const left_logic = left.isTruthy();
-        const right_logic = right.isTruthy();
-
-        // Ternary logic AND truth table
-        const result = switch (left_logic) {
-            .true_val => switch (right_logic) {
-                .true_val => memory.TernaryLogic.true_val,
-                .false_val => memory.TernaryLogic.false_val,
-                .unknown => memory.TernaryLogic.unknown,
-            },
-            .false_val => memory.TernaryLogic.false_val, // false dominates
-            .unknown => switch (right_logic) {
-                .false_val => memory.TernaryLogic.false_val, // false dominates
-                else => memory.TernaryLogic.unknown,
-            },
-        };
-
-        return switch (result) {
-            .true_val => MBLValue{ .boolean = memory.Boolean{ .value = true } },
-            .false_val => MBLValue{ .boolean = memory.Boolean{ .value = false } },
-            .unknown => MBLValue{ .unknown = {} },
-        };
-    }
-
-    fn performLogicalOr(self: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {
-        const left_logic = left.isTruthy();
-        const right_logic = right.isTruthy();
-
-        // Ternary logic OR truth table
-        const result = switch (left_logic) {
-            .true_val => memory.TernaryLogic.true_val, // true dominates
-            .false_val => switch (right_logic) {
-                .true_val => memory.TernaryLogic.true_val,
-                .false_val => memory.TernaryLogic.false_val,
-                .unknown => memory.TernaryLogic.unknown,
-            },
-            .unknown => switch (right_logic) {
-                .true_val => memory.TernaryLogic.true_val, // true dominates
-                else => memory.TernaryLogic.unknown,
-            },
-        };
-
-        return switch (result) {
-            .true_val => MBLValue{ .boolean = memory.Boolean{ .value = true } },
-            .false_val => MBLValue{ .boolean = memory.Boolean{ .value = false } },
-            .unknown => MBLValue{ .unknown = {} },
-        };
-    }
-
-    fn isTruthy(self: *Interpreter, value: MBLValue) bool {
-        // Legacy support - convert TernaryLogic to bool for older code
-        return switch (value.isTruthy()) {
-            .true_val => true,
-            .false_val, .unknown => false,
-        };
-    }
 };
+
+pub fn main() !void {
+    std.log.info("MBL Interpreter test compilation successful", .{});
+}

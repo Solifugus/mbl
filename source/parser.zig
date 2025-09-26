@@ -202,12 +202,14 @@ pub const ReturnStatement = struct {
 };
 
 pub const ActivatorDeclaration = struct {
-    name: []const u8,
+    name: ?[]const u8, // Optional name for activators
     condition: Expression,
     body: []Statement,
 
     pub fn deinit(self: *ActivatorDeclaration, allocator: std.mem.Allocator) void {
-        allocator.free(self.name);
+        if (self.name) |name| {
+            allocator.free(name);
+        }
         self.condition.deinit(allocator);
         for (self.body) |*stmt| {
             stmt.deinit(allocator);
@@ -499,17 +501,20 @@ pub const Parser = struct {
         if (self.match(.for_kw)) {
             return Statement{ .for_statement = try self.parseForStatement() };
         }
-        if (self.match(.break_kw)) {
+        if (self.match(.breakout_kw)) {
             return Statement{ .break_stmt = try self.parseBreakStatement() };
         }
-        if (self.match(.continue_kw)) {
+        if (self.match(.skip_kw)) {
             return Statement{ .continue_stmt = try self.parseContinueStatement() };
         }
         if (self.match(.return_kw)) {
             return Statement{ .return_statement = try self.parseReturnStatement() };
         }
-        if (self.match(.goto_kw)) {
-            return Statement{ .goto_stmt = try self.parseGotoStatement() };
+        if (self.match(.anytime_kw)) {
+            return try self.parseActivatorDeclaration();
+        }
+        if (self.match(.todo_kw)) {
+            return Statement{ .expression_stmt = ExpressionStatement{ .expression = Expression{ .literal = Literal{ .nothing = {} } } } };
         }
 
         // Assignment or expression statement
@@ -571,18 +576,15 @@ pub const Parser = struct {
     }
 
     fn parseActivatorDeclaration(self: *Parser) ParseError!Statement {
-        const name_token = try self.consume(.identifier, "Expected activator name");
-        const name = try self.allocator.dupe(u8, name_token.lexeme);
-
-        // Parse condition (everything up to the colon)
+        // Parse condition directly after "anytime"
         const condition = try self.parseExpression();
 
-        _ = try self.consume(.colon, "Expected ':' after activator condition");
+        _ = try self.consume(.colon, "Expected ':' after anytime condition");
 
-        const body = try self.parseBlock();
+        const body = try self.parseStatementBlock();
 
         return Statement{ .activator_declaration = ActivatorDeclaration{
-            .name = name,
+            .name = null, // Activators don't have names, they're identified by condition
             .condition = condition,
             .body = body,
         }};
@@ -606,32 +608,17 @@ pub const Parser = struct {
         if (self.check(.indent)) {
             const expected_indent = self.countIndentation();
 
-            while (!self.check(.else_kw) and !self.check(.end_kw) and !self.isAtEnd()) {
+            while (!self.check(.else_kw) and !self.checkBlockEnd() and !self.isAtEnd()) {
                 const current_indent = self.countIndentation();
-
-                // Check if we have an 'end' keyword after the indentation tokens
-                var pos = self.current;
-                while (pos < self.tokens.len and self.tokens[pos].type == .indent) {
-                    pos += 1;
-                }
-                if (pos < self.tokens.len and self.tokens[pos].type == .end_kw) {
-                    // Advance past all the INDENT tokens to position at the 'end' token
-                    while (self.check(.indent)) {
-                        _ = self.advance();
-                    }
-                    break; // Found 'end' after indentation, stop parsing statements
-                }
 
                 // If indentation is less than expected, we've reached the end of this block
                 if (current_indent < expected_indent) {
                     break;
                 }
 
-                // Consume the expected indentation tokens
-                var consumed_indent: usize = 0;
-                while (self.check(.indent) and consumed_indent < expected_indent) {
+                // Consume the INDENT token (only one token per line)
+                if (self.check(.indent)) {
                     _ = self.advance();
-                    consumed_indent += 1;
                 }
 
                 // Now parse the statement (no more INDENT tokens should be present)
@@ -643,7 +630,7 @@ pub const Parser = struct {
             }
         } else {
             // No indentation - parse statements on same line until else/end
-            while (!self.check(.else_kw) and !self.check(.end_kw) and !self.isAtEnd() and !self.checkNewlineOrSemicolon()) {
+            while (!self.check(.else_kw) and !self.checkBlockEnd() and !self.isAtEnd() and !self.checkNewlineOrSemicolon()) {
                 const stmt = try self.parseStatement();
                 try statements.append(stmt);
                 if (self.match(.semicolon)) {
@@ -659,16 +646,29 @@ pub const Parser = struct {
 
     fn parseIfStatement(self: *Parser) ParseError!IfStatement {
         const condition = try self.parseExpression();
-        _ = try self.consume(.then_kw, "Expected 'then' after if condition");
+        _ = try self.consume(.colon, "Expected ':' after if condition");
 
         const then_branch = try self.parseStatementBlock();
 
         var else_branch: ?[]Statement = null;
-        if (self.match(.else_kw)) {
-            else_branch = try self.parseStatementBlock();
+
+        // Look ahead for else clause at the same indentation level as the if
+        if (self.checkElseAtCurrentLevel()) {
+            // Consume any newlines and indentation to get to the else token
+            while (self.match(.newline)) {}
+
+            // Skip indentation tokens to get to else
+            while (self.check(.indent)) {
+                _ = self.advance();
+            }
+
+            if (self.match(.else_kw)) {
+                _ = try self.consume(.colon, "Expected ':' after else");
+                else_branch = try self.parseStatementBlock();
+            }
         }
 
-        _ = try self.consume(.end_kw, "Expected 'end' to close if statement");
+        // No longer need explicit 'end' - blocks end with dedentation
 
         return IfStatement{
             .condition = condition,
@@ -1377,10 +1377,9 @@ pub const Parser = struct {
         }
 
         // Check if it's a keyword that can be used as a label
+        // For new syntax, we'll rely on indentation
+        // This is a temporary implementation
         switch (current_token.type) {
-            .end_kw => {
-                return self.advance();
-            },
             else => {},
         }
 
@@ -1393,18 +1392,48 @@ pub const Parser = struct {
         return self.check(.newline) or self.check(.semicolon) or self.isAtEnd();
     }
 
+    fn checkBlockEnd(self: *Parser) bool {
+        // For colon-based syntax, block ends when indentation decreases or at EOF
+        // Don't end on newlines since they're normal between indented statements
+        return self.check(.eof);
+    }
+
     fn countIndentation(self: *Parser) usize {
-        var count: usize = 0;
         var pos = self.current;
 
+        // If there's an indent token, return the number of spaces divided by 4
+        if (pos < self.tokens.len and self.tokens[pos].type == .indent) {
+            const indent_lexeme = self.tokens[pos].lexeme;
+            return indent_lexeme.len / 4; // Each indent level is 4 spaces
+        }
 
-        // Count consecutive indent tokens
-        while (pos < self.tokens.len and self.tokens[pos].type == .indent) {
-            count += 1;
+        return 0;
+    }
+
+    fn checkElseAtCurrentLevel(self: *Parser) bool {
+        var pos = self.current;
+
+        // Skip over newlines
+        while (pos < self.tokens.len and self.tokens[pos].type == .newline) {
             pos += 1;
         }
 
-        return count;
+        // Check if there's an indent token and get its level
+        var indent_level: usize = 0;
+        if (pos < self.tokens.len and self.tokens[pos].type == .indent) {
+            const indent_lexeme = self.tokens[pos].lexeme;
+            indent_level = indent_lexeme.len / 4;
+            pos += 1;
+        }
+
+        // Check if the next token is 'else' at the same level as this if statement
+        // We need to determine what the "current level" is for the if statement
+        // For now, we'll check if there's an else token after any indentation
+        if (pos < self.tokens.len and self.tokens[pos].type == .else_kw) {
+            return true;
+        }
+
+        return false;
     }
 };
 

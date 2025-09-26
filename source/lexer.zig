@@ -42,19 +42,17 @@ pub const TokenType = enum {
     right_bracket,  // ]
 
     // Keywords
-    function_kw,    // function (implicit in syntax)
     if_kw,          // if
-    then_kw,        // then
     else_kw,        // else
-    end_kw,         // end
     while_kw,       // while
     for_kw,         // for
     in_kw,          // in
-    break_kw,       // break
-    continue_kw,    // continue
+    skip_kw,        // skip (replaces continue)
+    breakout_kw,    // breakout (replaces break)
     to_kw,          // to (for ranges)
     return_kw,      // return
-    goto_kw,        // goto
+    anytime_kw,     // anytime (for activators)
+    todo_kw,        // todo (empty block placeholder)
     true_kw,        // true
     false_kw,       // false
     super_kw,       // super
@@ -109,17 +107,16 @@ pub const TokenType = enum {
             .left_bracket => "[",
             .right_bracket => "]",
             .if_kw => "if",
-            .then_kw => "then",
             .else_kw => "else",
-            .end_kw => "end",
             .while_kw => "while",
             .for_kw => "for",
             .in_kw => "in",
-            .break_kw => "break",
-            .continue_kw => "continue",
+            .skip_kw => "skip",
+            .breakout_kw => "breakout",
             .to_kw => "to",
             .return_kw => "return",
-            .goto_kw => "goto",
+            .anytime_kw => "anytime",
+            .todo_kw => "todo",
             .true_kw => "true",
             .false_kw => "false",
             .super_kw => "super",
@@ -135,7 +132,6 @@ pub const TokenType = enum {
             .indent => "INDENT",
             .eof => "EOF",
             .comment => "COMMENT",
-            else => "UNKNOWN",
         };
     }
 };
@@ -169,6 +165,7 @@ pub const Lexer = struct {
     column: usize,
     start_column: usize,
     allocator: std.mem.Allocator,
+    at_line_start: bool,
 
     pub fn init(allocator: std.mem.Allocator, source: []const u8) Lexer {
         return Lexer{
@@ -179,6 +176,7 @@ pub const Lexer = struct {
             .column = 1,
             .start_column = 1,
             .allocator = allocator,
+            .at_line_start = true,
         };
     }
 
@@ -215,7 +213,15 @@ pub const Lexer = struct {
         const c = self.advance();
 
         return switch (c) {
-            ' ', '\r' => null, // Skip whitespace (except tabs and newlines)
+            ' ' => {
+                // Handle space-based indentation at line start
+                if (self.at_line_start) {
+                    return self.scanIndentation();
+                } else {
+                    return null; // Skip regular spaces
+                }
+            },
+            '\r' => null, // Skip carriage return
             '\t' => Token{
                 .type = .indent,
                 .lexeme = self.source[self.start..self.current],
@@ -225,6 +231,7 @@ pub const Lexer = struct {
             '\n' => {
                 self.line += 1;
                 self.column = 1;
+                self.at_line_start = true;
                 return Token{
                     .type = .newline,
                     .lexeme = self.source[self.start..self.current],
@@ -285,23 +292,27 @@ pub const Lexer = struct {
 
             // String literals
             '"' => {
+                self.at_line_start = false;
                 const token = try self.scanString();
                 return token;
             },
 
             // Money literals
             '$' => {
+                self.at_line_start = false;
                 const token = try self.scanMoney();
                 return token;
             },
 
             // Time literals
             '@' => {
+                self.at_line_start = false;
                 const token = try self.scanTime();
                 return token;
             },
 
             else => {
+                self.at_line_start = false;
                 if (self.isDigit(c)) {
                     const token = try self.scanNumber();
                     return token;
@@ -576,17 +587,16 @@ pub const Lexer = struct {
             .{ "or", .or_kw },
             .{ "not", .not_kw },
             .{ "if", .if_kw },
-            .{ "then", .then_kw },
             .{ "else", .else_kw },
-            .{ "end", .end_kw },
             .{ "while", .while_kw },
             .{ "for", .for_kw },
             .{ "in", .in_kw },
-            .{ "break", .break_kw },
-            .{ "continue", .continue_kw },
+            .{ "skip", .skip_kw },
+            .{ "breakout", .breakout_kw },
             .{ "to", .to_kw },
             .{ "return", .return_kw },
-            .{ "goto", .goto_kw },
+            .{ "anytime", .anytime_kw },
+            .{ "todo", .todo_kw },
             .{ "true", .true_kw },
             .{ "false", .false_kw },
             .{ "super", .super_kw },
@@ -649,7 +659,37 @@ pub const Lexer = struct {
         return self.isAlpha(c) or self.isDigit(c);
     }
 
+    fn scanIndentation(self: *Lexer) LexError!?Token {
+        // Count leading spaces at the start of the line
+        var space_count: u32 = 1; // We already consumed one space
+
+        // Continue counting spaces
+        while (!self.isAtEnd() and self.peek() == ' ') {
+            _ = self.advance();
+            space_count += 1;
+        }
+
+        self.at_line_start = false;
+
+        // Generate INDENT token for every 4 spaces
+        const indent_levels = space_count / 4;
+        if (indent_levels > 0) {
+            // For now, just return one token representing all indentation
+            // The parser will need to handle different indentation levels
+            return Token{
+                .type = .indent,
+                .lexeme = self.source[self.start..self.current],
+                .line = self.line,
+                .column = self.start_column,
+            };
+        } else {
+            // Less than 4 spaces, treat as regular whitespace
+            return null;
+        }
+    }
+
     fn makeToken(self: *Lexer, token_type: TokenType) Token {
+        self.at_line_start = false;
         return Token{
             .type = token_type,
             .lexeme = self.source[self.start..self.current],

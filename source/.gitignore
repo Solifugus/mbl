@@ -1,5 +1,7 @@
 # MBL Build Artifacts
 mbl
+mbl_run
+debug_tokens
 *.o
 zig-cache/
 zig-out/
@@ -7,6 +9,11 @@ zig-out/
 # Development files
 junkyard/
 *.tmp
+*_test.mbl
+*_debug.mbl
+test_*.mbl
+debug_*.mbl
+v0_*_TODO.md
 
 # IDE files
 .vscode/
