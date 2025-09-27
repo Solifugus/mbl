@@ -1,0 +1,6 @@
+{
+  "app_name": "Business Analytics",
+  "version": 2.1,
+  "debug_mode": true,
+  "features": ["reporting", "charts", "export"]
+}

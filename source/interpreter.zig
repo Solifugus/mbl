@@ -1019,8 +1019,8 @@ pub const Interpreter = struct {
 
         // Parse based on format
         if (std.mem.eql(u8, format, "json")) {
-            // Simple JSON parsing - just return as text for now
-            return MBLValue{ .text = memory.Text{ .data = file_contents } };
+            // Parse JSON into MBL data structures
+            return try self.parseJSONFile(file_contents);
         } else if (std.mem.eql(u8, format, "csv") or std.mem.eql(u8, format, "auto")) {
             // Parse CSV into list of records/lists
             return try self.parseCSVFile(file_contents);
@@ -1106,6 +1106,76 @@ pub const Interpreter = struct {
         std.log.info("🧹 CSV data imported - enabling cleanup protection", .{});
 
         return MBLValue{ .list = result_list };
+    }
+
+    fn parseJSONFile(self: *Interpreter, contents: []const u8) !MBLValue {
+        // Enable memory protection for JSON operations too
+        self.memory.has_csv_imported = true;
+        std.log.info("🚨 JSON parsing started - memory protection ENABLED", .{});
+
+        // Parse JSON using Zig's built-in parser
+        const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, contents, .{}) catch |err| {
+            const error_msg = switch (err) {
+                error.SyntaxError => "Invalid JSON format",
+                error.UnexpectedToken => "JSON syntax error",
+                error.UnexpectedEndOfInput => "Incomplete JSON",
+                error.OutOfMemory => "Out of memory parsing JSON",
+                else => "JSON parsing failed",
+            };
+            return MBLValue{ .text = try memory.Text.init(self.allocator, error_msg) };
+        };
+        defer parsed.deinit();
+
+        // Convert JSON Value to MBLValue
+        const result = try self.jsonValueToMBL(parsed.value);
+
+        std.log.info("🧹 JSON data imported - enabling cleanup protection", .{});
+        return result;
+    }
+
+    fn jsonValueToMBL(self: *Interpreter, json_value: std.json.Value) anyerror!MBLValue {
+        switch (json_value) {
+            .null => {
+                return MBLValue{ .unknown = {} }; // JSON null becomes MBL unknown
+            },
+            .bool => |b| {
+                return MBLValue{ .boolean = memory.Boolean{ .value = b } };
+            },
+            .integer => |i| {
+                return MBLValue{ .number = memory.Number{ .value = @floatFromInt(i) } };
+            },
+            .float => |f| {
+                return MBLValue{ .number = memory.Number{ .value = f } };
+            },
+            .number_string => |ns| {
+                // Parse number from string
+                const num = std.fmt.parseFloat(f64, ns) catch 0.0;
+                return MBLValue{ .number = memory.Number{ .value = num } };
+            },
+            .string => |s| {
+                const text = try memory.Text.init(self.allocator, s);
+                return MBLValue{ .text = text };
+            },
+            .array => |arr| {
+                var list = memory.List.init(self.allocator);
+                for (arr.items) |item| {
+                    const mbl_item = try self.jsonValueToMBL(item);
+                    try list.append(mbl_item);
+                }
+                return MBLValue{ .list = list };
+            },
+            .object => |obj| {
+                var record = memory.Record.init(self.allocator);
+                record.is_csv_imported = true; // Mark for memory protection
+
+                var iterator = obj.iterator();
+                while (iterator.next()) |entry| {
+                    const mbl_value = try self.jsonValueToMBL(entry.value_ptr.*);
+                    try record.set(entry.key_ptr.*, mbl_value);
+                }
+                return MBLValue{ .record = record };
+            },
+        }
     }
 
     fn handleTextMethod(self: *Interpreter, text: memory.Text, method_name: []const u8, arguments: []parser.Expression) anyerror!MBLValue {

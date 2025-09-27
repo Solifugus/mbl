@@ -1,0 +1,27 @@
+{
+  "company": {
+    "name": "Acme Corp",
+    "industry": "Manufacturing",
+    "founded": 1995,
+    "active": true
+  },
+  "departments": [
+    {
+      "name": "Sales",
+      "budget": 150000.50,
+      "employees": 12
+    },
+    {
+      "name": "Engineering",
+      "budget": 300000.00,
+      "employees": 25
+    }
+  ],
+  "settings": {
+    "currency": "USD",
+    "fiscal_year_start": "January",
+    "enable_notifications": true,
+    "max_overtime_hours": 40,
+    "office_locations": ["New York", "San Francisco", "Austin"]
+  }
+}
