@@ -110,6 +110,8 @@ pub const Interpreter = struct {
     http_server: ?std.net.StreamServer, // HTTP server instance
     server_thread: ?std.Thread, // Background server thread
     registered_routes: std.ArrayList(Route), // List of registered routes
+    server_running: bool, // Flag to indicate if server is active
+    shutdown_requested: bool, // Flag for graceful shutdown
 
     // MCP (Model Context Protocol) management
     mcp_connections: std.ArrayList(McpConnection), // Active MCP connections
@@ -137,6 +139,8 @@ pub const Interpreter = struct {
             .http_server = null,
             .server_thread = null,
             .registered_routes = std.ArrayList(Route).init(allocator),
+            .server_running = false,
+            .shutdown_requested = false,
 
             // MCP fields
             .mcp_connections = std.ArrayList(McpConnection).init(allocator),
@@ -174,6 +178,34 @@ pub const Interpreter = struct {
     fn log(self: *Interpreter, comptime fmt: []const u8, args: anytype) void {
         if (!self.quiet_mode) {
             std.log.info(fmt, args);
+        }
+    }
+
+    // Server lifecycle management methods
+    pub fn hasRunningServers(self: *Interpreter) bool {
+        return self.server_running or self.mcp_connections.items.len > 0;
+    }
+
+    pub fn initiateGracefulShutdown(self: *Interpreter) void {
+        self.shutdown_requested = true;
+
+        if (self.server_running) {
+            std.log.info("🔄 Initiating graceful shutdown of HTTP server...", .{});
+            self.server_running = false;
+        }
+
+        if (self.mcp_connections.items.len > 0) {
+            std.log.info("🔄 Initiating graceful shutdown of {} MCP connections...", .{self.mcp_connections.items.len});
+            // MCP connections will be cleaned up in deinit
+        }
+    }
+
+    pub fn waitForGracefulShutdown(self: *Interpreter) void {
+        if (self.server_thread) |thread| {
+            std.log.info("⏳ Waiting for server thread to complete...", .{});
+            thread.join();
+            self.server_thread = null;
+            std.log.info("✅ Server thread shutdown complete", .{});
         }
     }
 
@@ -276,7 +308,7 @@ pub const Interpreter = struct {
     // Setup web namespace and HTTP client functions
     fn setupWebNamespace(self: *Interpreter) !void {
         // Create web namespace record
-        var web_record = try memory.Record.init(self.allocator);
+        var web_record = memory.Record.init(self.allocator);
 
         // Create native function instances
         const listen_func = memory.NativeFunction{
@@ -903,7 +935,9 @@ pub const Interpreter = struct {
 
             // Handle native function calls on objects (e.g., program.web.listen())
             if (object_value == .record) {
-                const method_value = object_value.record.get(method_name);
+                // Get mutable reference to the record
+                var record_mut = object_value.record;
+                const method_value = record_mut.get(method_name);
                 if (method_value) |mv| {
                     if (mv == .native_function) {
                         return try self.callNativeFunction(mv.native_function, call_expr.arguments);
@@ -2804,9 +2838,12 @@ pub const Interpreter = struct {
             interpreter: *Interpreter,
 
             fn serverLoop(ctx: *@This()) void {
-                while (true) {
+                std.log.info("🚀 HTTP Server thread started", .{});
+                while (ctx.interpreter.server_running and !ctx.interpreter.shutdown_requested) {
                     var connection = ctx.interpreter.http_server.?.accept() catch |err| {
-                        std.log.err("❌ Failed to accept connection: {}", .{err});
+                        if (ctx.interpreter.server_running and !ctx.interpreter.shutdown_requested) {
+                            std.log.err("❌ Failed to accept connection: {}", .{err});
+                        }
                         continue;
                     };
                     defer connection.stream.close();
@@ -2815,6 +2852,7 @@ pub const Interpreter = struct {
                         std.log.err("❌ Failed to handle HTTP request: {}", .{err});
                     };
                 }
+                std.log.info("🔄 HTTP Server thread shutting down gracefully", .{});
             }
 
             fn handleHttpRequest(ctx: *@This(), connection: *std.net.StreamServer.Connection) !void {
@@ -2854,7 +2892,7 @@ pub const Interpreter = struct {
                     return err;
                 };
 
-                std.log.info("✅ Response sent");
+                std.log.info("✅ Response sent", .{});
             }
 
             fn generateResponse(ctx: *@This(), method: []const u8, path: []const u8) []const u8 {
@@ -2874,6 +2912,7 @@ pub const Interpreter = struct {
         var context = ServerContext{ .interpreter = self };
 
         self.server_thread = try std.Thread.spawn(.{}, ServerContext.serverLoop, .{&context});
+        self.server_running = true;
 
         // Give the server thread a moment to start
         std.time.sleep(100 * std.time.ns_per_ms);
@@ -3172,9 +3211,9 @@ pub const Interpreter = struct {
 
         // Set up basic MCP capabilities
         var capabilities = memory.Record.init(self.allocator);
-        try capabilities.set("tools", MBLValue{ .boolean = true });
-        try capabilities.set("resources", MBLValue{ .boolean = true });
-        try capabilities.set("notifications", MBLValue{ .boolean = true });
+        try capabilities.set("tools", MBLValue{ .boolean = memory.Boolean.init(true) });
+        try capabilities.set("resources", MBLValue{ .boolean = memory.Boolean.init(true) });
+        try capabilities.set("notifications", MBLValue{ .boolean = memory.Boolean.init(true) });
         connection.capabilities = MBLValue{ .record = capabilities };
 
         try self.mcp_connections.append(connection);
@@ -3416,7 +3455,7 @@ pub const Interpreter = struct {
 
         // Mock success response
         var mock_result = memory.Record.init(self.allocator);
-        try mock_result.set("success", MBLValue{ .boolean = true });
+        try mock_result.set("success", MBLValue{ .boolean = memory.Boolean.init(true) });
         try mock_result.set("id", MBLValue{ .number = memory.Number{ .value = 12345 } });
         try response_record.set("data", MBLValue{ .record = mock_result });
 
@@ -3474,7 +3513,7 @@ pub const Interpreter = struct {
         try response_record.set("status", MBLValue{ .number = memory.Number{ .value = 204 } });
         try response_record.set("url", MBLValue{ .text = try memory.Text.init(self.allocator, url) });
         try response_record.set("method", MBLValue{ .text = try memory.Text.init(self.allocator, "DELETE") });
-        try response_record.set("deleted", MBLValue{ .boolean = true });
+        try response_record.set("deleted", MBLValue{ .boolean = memory.Boolean.init(true) });
 
         return MBLValue{ .record = response_record };
     }

@@ -707,6 +707,39 @@ pub const TernaryLogic = enum {
     unknown,
 };
 
+pub const NativeFunction = struct {
+    name: []const u8,
+    zig_function: *const fn(*anyopaque, []MBLValue) anyerror!MBLValue,
+    parameter_count: ?usize, // null means variadic
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator, name: []const u8, zig_function: *const fn(*anyopaque, []MBLValue) anyerror!MBLValue, parameter_count: ?usize) !NativeFunction {
+        const owned_name = try allocator.dupe(u8, name);
+        return NativeFunction{
+            .name = owned_name,
+            .zig_function = zig_function,
+            .parameter_count = parameter_count,
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *NativeFunction) void {
+        self.allocator.free(self.name);
+    }
+
+    pub fn call(self: NativeFunction, interpreter: *anyopaque, arguments: []MBLValue) !MBLValue {
+        // Validate argument count if specified
+        if (self.parameter_count) |expected_count| {
+            if (arguments.len != expected_count) {
+                // Return error - will be handled by interpreter
+                return error.InvalidArgumentCount;
+            }
+        }
+
+        return try self.zig_function(interpreter, arguments);
+    }
+};
+
 pub const MBLValue = union(enum) {
     text: Text,
     number: Number,
@@ -717,6 +750,7 @@ pub const MBLValue = union(enum) {
     record: Record,
     list: List,
     function: Function,
+    native_function: NativeFunction,
     activator: Activator,
     file_handle: FileHandle,
     unknown: void,  // Ternary logic: true, false, unknown
@@ -732,6 +766,7 @@ pub const MBLValue = union(enum) {
             .record => |*r| r.deinit(),
             .list => |*l| l.deinit(),
             .function => |*f| f.deinit(),
+            .native_function => |*nf| nf.deinit(),
             .activator => |*a| a.deinit(),
             .file_handle => |*f| f.deinit(),
             .unknown => {}, // No cleanup needed
@@ -773,6 +808,13 @@ pub const MBLValue = union(enum) {
                 const str = try std.fmt.allocPrint(allocator, "[Function: {s}]", .{f.name});
                 return Text{ .data = str };
             },
+            .native_function => |nf| {
+                const param_str = if (nf.parameter_count) |count|
+                    try std.fmt.allocPrint(allocator, "[NativeFunction: {s}({d} params)]", .{ nf.name, count })
+                else
+                    try std.fmt.allocPrint(allocator, "[NativeFunction: {s}(variadic)]", .{nf.name});
+                return Text{ .data = param_str };
+            },
             .activator => |a| {
                 const str = try std.fmt.allocPrint(allocator, "[Activator: {s}]", .{a.name});
                 return Text{ .data = str };
@@ -803,7 +845,7 @@ pub const MBLValue = union(enum) {
             .money => |m| return if (m.value != 0) .true_val else .false_val,
             .time => |t| return if (t.value != 0) .true_val else .false_val,
             .duration => |d| return if (d.value != 0) .true_val else .false_val,
-            .record, .list, .function, .activator, .file_handle => return .true_val,
+            .record, .list, .function, .activator, .file_handle, .native_function => return .true_val,
             .unknown => return .unknown,
         }
     }
@@ -913,6 +955,10 @@ pub const MBLValue = union(enum) {
             .file_handle => |f| {
                 // File handles should not be deep copied - just reference
                 return MBLValue{ .file_handle = f };
+            },
+            .native_function => |nf| {
+                // Native functions are reference copied (they're just function pointers)
+                return MBLValue{ .native_function = nf };
             },
             .unknown => return MBLValue{ .unknown = {} },
         }

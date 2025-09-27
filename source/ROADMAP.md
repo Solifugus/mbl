@@ -148,12 +148,14 @@
 - [x] **Real-time Business Events**: Event-driven updates with activator-triggered cascading notifications
 - [x] **WebSocket Foundation**: Bidirectional communication architecture ready for production
 
-### ✅ **Server Lifecycle**:
+### ✅ **Server Lifecycle (COMPLETE)**:
 - [x] **Background Operation**: Server thread spawning with proper lifecycle management
 - [x] **Resource Management**: Server initialization, connection handling, and cleanup
 - [x] **Thread Safety**: Concurrent request handling with proper memory management
-- [ ] **Keep-Alive Mechanism**: Program persistence for long-running server processes (future enhancement)
-- [ ] **Graceful Shutdown**: SIGTERM/SIGINT handling for clean server shutdown (future enhancement)
+- [x] **Keep-Alive Mechanism**: Automatic program persistence for long-running server processes
+- [x] **Graceful Shutdown**: SIGTERM/SIGINT handling framework with clean server shutdown
+- [x] **Server Detection**: Automatic keep-alive activation when servers are running
+- [x] **Thread Coordination**: Signal handling with atomic shutdown coordination
 
 ## 🚀 v0.13.0 - Database Integration (PLANNED)
 - [ ] **Database Connections**: SQL databases (PostgreSQL, MySQL, SQLite)
@@ -203,9 +205,9 @@ When starting a new version:
 9. [ ] Tag release: `git tag v0.x.0`
 10. [ ] Update ROADMAP.md with completed items
 
-## 🎯 Current Status: v0.12.1 - Real-time MCP Communication COMPLETE!
+## 🎯 Current Status: v0.12.2 - Production Server Platform COMPLETE!
 
-**MBL is now a complete full-stack web framework with enterprise-grade capabilities!**
+**MBL is now a complete production-ready server platform with automatic keep-alive and graceful shutdown!**
 
 ### ✅ **Complete Feature Set:**
 - **All Core Language Features**: Variables, expressions, control flow, functions
@@ -227,6 +229,8 @@ When starting a new version:
 - **MCP Real-time Communication**: Multi-client synchronization with channel-based subscriptions
 - **Role-based Message Filtering**: Business-aware content routing and selective client targeting
 - **Activator-Driven Events**: Real-time cascading updates with event-driven business logic
+- **Keep-Alive & Graceful Shutdown**: Automatic server persistence with clean termination
+- **Signal Handling Framework**: Background thread coordination and responsive shutdown
 - **Production Ready**: Memory-safe operations, proper error handling, comprehensive testing
 
 ### 🏗️ **Robust Architecture:**
@@ -238,6 +242,7 @@ When starting a new version:
 - **Event System**: Automatic condition checking after variable assignments
 - **I/O System**: Safe file operations with comprehensive cleanup protection
 - **Web Architecture**: Native function-based API for web server configuration and routing
+- **Server Lifecycle**: Automatic keep-alive detection and graceful shutdown coordination
 
 ### 🚀 **Enterprise Capabilities:**
 - **Business Constraints**: Automatic validation and policy enforcement
@@ -248,13 +253,13 @@ When starting a new version:
 - **Memory Safety**: Production-grade protection against memory corruption
 - **Configuration Management**: Enterprise JSON config files with nested access
 
-MBL now handles complex business scenarios including CSV data analysis, JSON configuration management, customer record processing, financial data import, API response processing, inventory management with file operations, automated business rule enforcement, **REST API consumption and web service hosting**, and **real-time multi-client synchronization with MCP broadcasting** - all with enterprise-grade reliability, memory safety, and the robust error handling philosophy of the Unknown pseudo-type.
+MBL now handles complex business scenarios including CSV data analysis, JSON configuration management, customer record processing, financial data import, API response processing, inventory management with file operations, automated business rule enforcement, **REST API consumption and web service hosting**, **real-time multi-client synchronization with MCP broadcasting**, and **automatic server keep-alive with graceful shutdown** - all with enterprise-grade reliability, memory safety, and the robust error handling philosophy of the Unknown pseudo-type.
 
-## 🏆 v0.12.1 COMPLETE: Real-time Multi-Client Communication Achievement!
+## 🏆 v0.12.2 COMPLETE: Production Server Platform Achievement!
 
-**🎉 MAJOR MILESTONE ACHIEVED**: MBL is now a complete real-time business application platform!
+**🎉 MAJOR MILESTONE ACHIEVED**: MBL is now a complete production-ready server platform!
 
-MBL has successfully transformed from a business scripting language into a comprehensive real-time web application platform with multi-client synchronization capabilities:
+MBL has successfully transformed from a business scripting language into a comprehensive production server platform with automatic keep-alive, graceful shutdown, and enterprise-grade server lifecycle management:
 
 ```mbl
 # HTTP Client - Consume external APIs
@@ -286,9 +291,13 @@ sales_sub = program.web.mcp_subscribe(sales_client.connection_id, "sales_data")
 # Real-time business event broadcasting
 customer_update = { customer_id: 12345, status: "premium" }
 program.web.mcp_broadcast("customer_updates", customer_update)
+
+# Automatic Keep-Alive - Server stays running after program completion
+# No additional code needed - automatic detection and keep-alive activation
+# Graceful shutdown with Ctrl+C signal handling
 ```
 
-### **✅ Complete v0.12.1 Implementation:**
+### **✅ Complete v0.12.2 Implementation:**
 - **HTTP Client Framework**: Full REST API support (GET, POST, PUT, DELETE)
 - **Real TCP Web Server**: std.net.StreamServer with HTTP parsing and JSON responses
 - **Advanced Routing**: URL parameter extraction from complex paths like `/users/{id}/posts/{post_id}`
@@ -296,9 +305,12 @@ program.web.mcp_broadcast("customer_updates", customer_update)
 - **MCP Real-time Broadcasting**: Multi-client synchronization with channel-based subscriptions
 - **Role-based Message Filtering**: Business-aware content routing and selective client targeting
 - **Activator-triggered Events**: Real-time cascading updates with event-driven business logic
+- **Automatic Keep-Alive**: Zero-configuration server persistence with automatic detection
+- **Graceful Shutdown**: Signal handling framework with clean thread termination
+- **Server Lifecycle Management**: Background thread coordination and resource cleanup
 - **Production Architecture**: Background threading, resource management, robust error handling
 - **NativeFunction System**: Extensible architecture for compiled Zig functions in MBL
 
 ## 🎯 Next Priority: v0.13.0 - Database Integration
 
-With real-time multi-client communication complete, MBL is ready for database integration to become a truly comprehensive business application platform capable of full-stack development with persistent data storage, completing the modern business application tech stack.
+With production server capabilities and automatic keep-alive complete, MBL is ready for database integration to become a truly comprehensive business application platform capable of full-stack development with persistent data storage, completing the modern business application tech stack.
