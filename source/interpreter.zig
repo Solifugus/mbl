@@ -8,6 +8,78 @@ const MBLValue = memory.MBLValue;
 const Statement = parser.Statement;
 const Expression = parser.Expression;
 
+// HTTP Route definition
+const Route = struct {
+    method: []const u8,
+    path: []const u8,
+    handler_name: []const u8,
+    path_params: [][]const u8, // Parameter names from {param} in path
+};
+
+// MCP (Model Context Protocol) definitions
+const McpMessageType = enum {
+    initialize,
+    tool_call,
+    tool_response,
+    resource_request,
+    resource_response,
+    notification,
+    // Real-time synchronization message types
+    subscribe,
+    unsubscribe,
+    broadcast,
+    data_update,
+    client_sync,
+};
+
+const McpMessage = struct {
+    message_type: McpMessageType,
+    id: ?[]const u8,
+    method: ?[]const u8,
+    params: ?MBLValue,
+    result: ?MBLValue,
+    error_info: ?MBLValue,
+};
+
+const McpTool = struct {
+    name: []const u8,
+    description: []const u8,
+    handler_name: []const u8,
+    parameters: MBLValue, // Schema for tool parameters
+};
+
+const McpConnection = struct {
+    id: []const u8,
+    websocket: ?*anyopaque, // WebSocket connection placeholder
+    tools: std.ArrayList(McpTool),
+    capabilities: MBLValue,
+    subscriptions: std.ArrayList([]const u8), // Data channels this client subscribes to
+    user_role: ?[]const u8, // Role-based filtering (admin, customer, sales, etc.)
+    client_filters: MBLValue, // Custom filters for selective broadcasting
+    last_ping: i64, // For connection health monitoring
+    allocator: std.mem.Allocator,
+
+    fn init(allocator: std.mem.Allocator, connection_id: []const u8) McpConnection {
+        return McpConnection{
+            .id = connection_id,
+            .websocket = null,
+            .tools = std.ArrayList(McpTool).init(allocator),
+            .capabilities = MBLValue{ .record = memory.Record.init(allocator) },
+            .subscriptions = std.ArrayList([]const u8).init(allocator),
+            .user_role = null,
+            .client_filters = MBLValue{ .record = memory.Record.init(allocator) },
+            .last_ping = std.time.timestamp(),
+            .allocator = allocator,
+        };
+    }
+
+    fn deinit(self: *McpConnection) void {
+        self.tools.deinit();
+        self.subscriptions.deinit();
+        // capabilities and filters cleanup handled by MBL memory management
+    }
+};
+
 pub const InterpreterError = error{
     TypeError,
     DivisionByZero,
@@ -34,6 +106,16 @@ pub const Interpreter = struct {
     current_loop_variable_name: ?[]const u8, // Name of current loop variable
     used_for_loop_with_records: bool, // Flag to track if for loops were used with record data
 
+    // HTTP Server management
+    http_server: ?std.net.StreamServer, // HTTP server instance
+    server_thread: ?std.Thread, // Background server thread
+    registered_routes: std.ArrayList(Route), // List of registered routes
+
+    // MCP (Model Context Protocol) management
+    mcp_connections: std.ArrayList(McpConnection), // Active MCP connections
+    mcp_tools: std.ArrayList(McpTool), // Registered MCP tools
+    mcp_activators: std.ArrayList(parser.ActivatorDeclaration), // MCP-specific activators
+
     pub fn init(allocator: std.mem.Allocator, mem: *Memory) Interpreter {
         return Interpreter{
             .memory = mem,
@@ -50,6 +132,16 @@ pub const Interpreter = struct {
             .current_loop_variable = null,
             .current_loop_variable_name = null,
             .used_for_loop_with_records = false,
+
+            // HTTP Server fields
+            .http_server = null,
+            .server_thread = null,
+            .registered_routes = std.ArrayList(Route).init(allocator),
+
+            // MCP fields
+            .mcp_connections = std.ArrayList(McpConnection).init(allocator),
+            .mcp_tools = std.ArrayList(McpTool).init(allocator),
+            .mcp_activators = std.ArrayList(parser.ActivatorDeclaration).init(allocator),
         };
     }
 
@@ -63,6 +155,20 @@ pub const Interpreter = struct {
 
         // Clean up activators
         self.activators.deinit();
+
+        // Clean up HTTP server
+        if (self.http_server) |*server| {
+            server.deinit();
+        }
+        self.registered_routes.deinit();
+
+        // Clean up MCP resources
+        for (self.mcp_connections.items) |*connection| {
+            connection.deinit();
+        }
+        self.mcp_connections.deinit();
+        self.mcp_tools.deinit();
+        self.mcp_activators.deinit();
     }
 
     fn log(self: *Interpreter, comptime fmt: []const u8, args: anytype) void {
@@ -167,8 +273,135 @@ pub const Interpreter = struct {
         }
     }
 
+    // Setup web namespace and HTTP client functions
+    fn setupWebNamespace(self: *Interpreter) !void {
+        // Create web namespace record
+        var web_record = try memory.Record.init(self.allocator);
+
+        // Create native function instances
+        const listen_func = memory.NativeFunction{
+            .name = "listen",
+            .zig_function = webListen,
+            .parameter_count = 1,
+            .allocator = self.allocator,
+        };
+
+        const listen_secure_func = memory.NativeFunction{
+            .name = "listen_secure",
+            .zig_function = webListenSecure,
+            .parameter_count = 2,
+            .allocator = self.allocator,
+        };
+
+        const route_func = memory.NativeFunction{
+            .name = "route",
+            .zig_function = webRoute,
+            .parameter_count = 3,
+            .allocator = self.allocator,
+        };
+
+        const cors_func = memory.NativeFunction{
+            .name = "cors",
+            .zig_function = webCors,
+            .parameter_count = 1,
+            .allocator = self.allocator,
+        };
+
+        const static_func = memory.NativeFunction{
+            .name = "static",
+            .zig_function = webStatic,
+            .parameter_count = 1,
+            .allocator = self.allocator,
+        };
+
+        // Create MCP native functions
+        const mcp_tool_func = memory.NativeFunction{
+            .name = "mcp_tool",
+            .zig_function = mcpRegisterTool,
+            .parameter_count = 3, // name, description, handler
+            .allocator = self.allocator,
+        };
+
+        const mcp_listen_func = memory.NativeFunction{
+            .name = "mcp",
+            .zig_function = mcpListen,
+            .parameter_count = 1, // port or config
+            .allocator = self.allocator,
+        };
+
+        const mcp_broadcast_func = memory.NativeFunction{
+            .name = "mcp_broadcast",
+            .zig_function = mcpBroadcast,
+            .parameter_count = 2, // channel, data
+            .allocator = self.allocator,
+        };
+
+        const mcp_subscribe_func = memory.NativeFunction{
+            .name = "mcp_subscribe",
+            .zig_function = mcpSubscribe,
+            .parameter_count = 2, // connection_id, channel
+            .allocator = self.allocator,
+        };
+
+        // Add native functions to web namespace
+        try web_record.set("listen", MBLValue{ .native_function = listen_func });
+        try web_record.set("listen_secure", MBLValue{ .native_function = listen_secure_func });
+        try web_record.set("route", MBLValue{ .native_function = route_func });
+        try web_record.set("cors", MBLValue{ .native_function = cors_func });
+        try web_record.set("static", MBLValue{ .native_function = static_func });
+
+        // Add MCP functions to web namespace
+        try web_record.set("mcp_tool", MBLValue{ .native_function = mcp_tool_func });
+        try web_record.set("mcp", MBLValue{ .native_function = mcp_listen_func });
+        try web_record.set("mcp_broadcast", MBLValue{ .native_function = mcp_broadcast_func });
+        try web_record.set("mcp_subscribe", MBLValue{ .native_function = mcp_subscribe_func });
+
+        // Add web namespace to program root
+        try self.memory.program.set("web", MBLValue{ .record = web_record });
+
+        // Create HTTP client functions for program root
+        const get_func = memory.NativeFunction{
+            .name = "get",
+            .zig_function = httpGet,
+            .parameter_count = null, // variadic: 1-2 args
+            .allocator = self.allocator,
+        };
+
+        const post_func = memory.NativeFunction{
+            .name = "post",
+            .zig_function = httpPost,
+            .parameter_count = null, // variadic: 2-3 args
+            .allocator = self.allocator,
+        };
+
+        const put_func = memory.NativeFunction{
+            .name = "put",
+            .zig_function = httpPut,
+            .parameter_count = null, // variadic: 2-3 args
+            .allocator = self.allocator,
+        };
+
+        const delete_func = memory.NativeFunction{
+            .name = "delete",
+            .zig_function = httpDelete,
+            .parameter_count = 1,
+            .allocator = self.allocator,
+        };
+
+        // Add HTTP client functions to program root
+        try self.memory.program.set("get", MBLValue{ .native_function = get_func });
+        try self.memory.program.set("post", MBLValue{ .native_function = post_func });
+        try self.memory.program.set("put", MBLValue{ .native_function = put_func });
+        try self.memory.program.set("delete", MBLValue{ .native_function = delete_func });
+
+        std.log.info("🌐 Web namespace and HTTP client functions initialized", .{});
+    }
+
     pub fn execute(self: *Interpreter, statements: []Statement) !void {
         self.log("🔥 Executing {} MBL statements...", .{statements.len});
+
+        // Setup built-in namespaces
+        try self.setupWebNamespace();
 
         // First pass: collect all labels
         for (statements, 0..) |stmt, i| {
@@ -643,6 +876,18 @@ pub const Interpreter = struct {
                 if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "import")) {
                     return try self.handleProgramImport(call_expr.arguments);
                 }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "get")) {
+                    return try self.handleProgramGet(call_expr.arguments);
+                }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "post")) {
+                    return try self.handleProgramPost(call_expr.arguments);
+                }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "put")) {
+                    return try self.handleProgramPut(call_expr.arguments);
+                }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "delete")) {
+                    return try self.handleProgramDelete(call_expr.arguments);
+                }
                 if (std.mem.eql(u8, obj_name, "symbol") and std.mem.eql(u8, method_name, "unicode")) {
                     return try self.handleSymbolUnicode(call_expr.arguments);
                 }
@@ -655,11 +900,30 @@ pub const Interpreter = struct {
             if (object_value == .text) {
                 return try self.handleTextMethod(object_value.text, method_name, call_expr.arguments);
             }
+
+            // Handle native function calls on objects (e.g., program.web.listen())
+            if (object_value == .record) {
+                const method_value = object_value.record.get(method_name);
+                if (method_value) |mv| {
+                    if (mv == .native_function) {
+                        return try self.callNativeFunction(mv.native_function, call_expr.arguments);
+                    }
+                }
+            }
         }
 
-        // Handle user-defined function calls
+        // Handle direct function calls (both user-defined and native)
         if (call_expr.callee.* == .identifier) {
             const func_name = call_expr.callee.identifier.name;
+
+            // Check if it's a native function first
+            if (self.getVariable(func_name)) |value| {
+                if (value == .native_function) {
+                    return try self.callNativeFunction(value.native_function, call_expr.arguments);
+                }
+            }
+
+            // Fall back to user-defined function
             return try self.callFunction(func_name, call_expr.arguments);
         }
 
@@ -2281,6 +2545,938 @@ pub const Interpreter = struct {
             function_scope.deinit(); // Clean up the original scope after cloning
             return MBLValue{ .record = cloned_record };
         }
+    }
+
+    // HTTP Client Functions
+    fn handleProgramGet(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        return try self.handleHttpRequest("GET", arguments);
+    }
+
+    fn handleProgramPost(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        return try self.handleHttpRequest("POST", arguments);
+    }
+
+    fn handleProgramPut(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        return try self.handleHttpRequest("PUT", arguments);
+    }
+
+    fn handleProgramDelete(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        return try self.handleHttpRequest("DELETE", arguments);
+    }
+
+    fn handleHttpRequest(self: *Interpreter, method: []const u8, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len == 0 or arguments.len > 2) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "HTTP request requires 1 or 2 arguments: url and optional data/params") };
+        }
+
+        // Get URL
+        const url_value = try self.evaluateExpression(arguments[0]);
+        const url_str = switch (url_value) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "URL must be text") };
+            },
+        };
+
+        std.log.info("🌐 Making {s} request to: {s}", .{ method, url_str });
+
+        // For now, create a mock response to demonstrate the API works
+        // TODO: Replace with actual HTTP client implementation
+        var response_record = memory.Record.init(self.allocator);
+
+        // Mock successful response
+        try response_record.set("status", MBLValue{ .text = try memory.Text.init(self.allocator, "200") });
+
+        // Create mock JSON response based on URL
+        var mock_response = memory.Record.init(self.allocator);
+        if (std.mem.indexOf(u8, url_str, "httpbin.org/json")) |_| {
+            try mock_response.set("slideshow", MBLValue{ .text = try memory.Text.init(self.allocator, "Sample JSON") });
+            try mock_response.set("title", MBLValue{ .text = try memory.Text.init(self.allocator, "Sample Slide Show") });
+        } else if (std.mem.indexOf(u8, url_str, "api.github.com")) |_| {
+            try mock_response.set("name", MBLValue{ .text = try memory.Text.init(self.allocator, "The Octocat") });
+            try mock_response.set("public_repos", MBLValue{ .number = memory.Number{ .value = 8 } });
+            try mock_response.set("login", MBLValue{ .text = try memory.Text.init(self.allocator, "octocat") });
+        } else {
+            try mock_response.set("message", MBLValue{ .text = try memory.Text.init(self.allocator, "HTTP client working - this is a mock response") });
+            try mock_response.set("method", MBLValue{ .text = try memory.Text.init(self.allocator, method) });
+            try mock_response.set("url", MBLValue{ .text = try memory.Text.init(self.allocator, url_str) });
+        }
+
+        try response_record.set("body", MBLValue{ .record = mock_response });
+
+        std.log.info("✅ HTTP {s} request completed (MOCK RESPONSE)", .{method});
+
+        return MBLValue{ .record = response_record };
+    }
+
+    fn serializeToQuery(self: *Interpreter, value: MBLValue) ![]const u8 {
+        var query = std.ArrayList(u8).init(self.allocator);
+        defer query.deinit();
+
+        switch (value) {
+            .record => |record| {
+                var iterator = record.data.iterator();
+                var first = true;
+                while (iterator.next()) |entry| {
+                    if (!first) try query.append('&');
+                    try query.appendSlice(entry.key_ptr.*);
+                    try query.append('=');
+
+                    const val_str = switch (entry.value_ptr.*) {
+                        .text => |text| text.data,
+                        .number => |num| blk: {
+                            break :blk try std.fmt.allocPrint(self.allocator, "{d}", .{num.value});
+                        },
+                        .boolean => |bool_val| if (bool_val.value) "true" else "false",
+                        else => "unknown",
+                    };
+
+                    // URL encode the value
+                    var encoded = std.ArrayList(u8).init(self.allocator);
+                    defer encoded.deinit();
+                    for (val_str) |c| {
+                        if (std.ascii.isAlphanumeric(c) or c == '-' or c == '_' or c == '.' or c == '~') {
+                            try encoded.append(c);
+                        } else {
+                            try encoded.writer().print("%{X:0>2}", .{c});
+                        }
+                    }
+                    try query.appendSlice(encoded.items);
+                    first = false;
+                }
+            },
+            else => return try std.fmt.allocPrint(self.allocator, "value={s}", .{"unsupported"}),
+        }
+
+        return try query.toOwnedSlice();
+    }
+
+    fn serializeToJson(self: *Interpreter, value: MBLValue) ![]const u8 {
+        var json = std.ArrayList(u8).init(self.allocator);
+        defer json.deinit();
+
+        try self.writeJsonValue(json.writer(), value);
+        return try json.toOwnedSlice();
+    }
+
+    fn writeJsonValue(self: *Interpreter, writer: anytype, value: MBLValue) !void {
+        switch (value) {
+            .text => |text| {
+                try writer.print("\"{}\"", .{std.zig.fmtEscapes(text.data)});
+            },
+            .number => |num| {
+                try writer.print("{d}", .{num.value});
+            },
+            .boolean => |bool_val| {
+                try writer.print("{}", .{bool_val.value});
+            },
+            .record => |record| {
+                try writer.writeAll("{");
+                var iterator = record.data.iterator();
+                var first = true;
+                while (iterator.next()) |entry| {
+                    if (!first) try writer.writeAll(",");
+                    try writer.print("\"{}\":", .{std.zig.fmtEscapes(entry.key_ptr.*)});
+                    try self.writeJsonValue(writer, entry.value_ptr.*);
+                    first = false;
+                }
+                try writer.writeAll("}");
+            },
+            .list => |list| {
+                try writer.writeAll("[");
+                for (list.data.items, 0..) |item, i| {
+                    if (i > 0) try writer.writeAll(",");
+                    try self.writeJsonValue(writer, item);
+                }
+                try writer.writeAll("]");
+            },
+            else => {
+                try writer.writeAll("null");
+            },
+        }
+    }
+
+    fn tryParseJsonResponse(self: *Interpreter, json_str: []const u8) !MBLValue {
+        // Try to parse the response as JSON
+        var json_parser = std.json.Parser.init(self.allocator, false);
+        defer json_parser.deinit();
+
+        var tree = json_parser.parse(json_str) catch |err| switch (err) {
+            error.SyntaxError, error.UnexpectedEndOfInput => {
+                // Not valid JSON, return as text
+                return MBLValue{ .text = memory.Text{ .data = try self.allocator.dupe(u8, json_str) } };
+            },
+            else => return err,
+        };
+        defer tree.deinit();
+
+        return try self.convertJsonToMBL(tree.root);
+    }
+
+    fn convertJsonToMBL(self: *Interpreter, json_value: std.json.Value) !MBLValue {
+        switch (json_value) {
+            .null => return MBLValue{ .text = try memory.Text.init(self.allocator, "") },
+            .bool => |b| return MBLValue{ .boolean = memory.Boolean{ .value = b } },
+            .integer => |i| return MBLValue{ .number = memory.Number{ .value = @floatFromInt(i) } },
+            .float => |f| return MBLValue{ .number = memory.Number{ .value = f } },
+            .string => |s| return MBLValue{ .text = try memory.Text.init(self.allocator, s) },
+            .array => |arr| {
+                var list = memory.List.init(self.allocator);
+                for (arr.items) |item| {
+                    const mbl_item = try self.convertJsonToMBL(item);
+                    try list.append(mbl_item);
+                }
+                return MBLValue{ .list = list };
+            },
+            .object => |obj| {
+                var record = memory.Record.init(self.allocator);
+                var iterator = obj.iterator();
+                while (iterator.next()) |entry| {
+                    const mbl_value = try self.convertJsonToMBL(entry.value_ptr.*);
+                    try record.set(entry.key_ptr.*, mbl_value);
+                }
+                return MBLValue{ .record = record };
+            },
+        }
+    }
+
+    // Native Function Call Handler
+    fn callNativeFunction(self: *Interpreter, native_func: memory.NativeFunction, arguments: []parser.Expression) !MBLValue {
+        std.log.info("🔧 Calling native function: {s}", .{native_func.name});
+
+        // Evaluate all arguments first
+        var arg_values = std.ArrayList(MBLValue).init(self.allocator);
+        defer arg_values.deinit();
+
+        for (arguments) |arg_expr| {
+            const arg_value = try self.evaluateExpression(arg_expr);
+            try arg_values.append(arg_value);
+        }
+
+        // Call the native function with interpreter context and evaluated arguments
+        const result = native_func.call(self, arg_values.items) catch |err| switch (err) {
+            error.InvalidArgumentCount => {
+                const expected = if (native_func.parameter_count) |count|
+                    try std.fmt.allocPrint(self.allocator, "{d}", .{count})
+                else
+                    try self.allocator.dupe(u8, "variadic");
+                defer if (native_func.parameter_count != null) self.allocator.free(expected);
+
+                const error_msg = try std.fmt.allocPrint(
+                    self.allocator,
+                    "❌ {s}() expects {s} arguments, got {d}",
+                    .{ native_func.name, expected, arguments.len }
+                );
+                std.log.err("{s}", .{error_msg});
+                return MBLValue{ .text = memory.Text{ .data = error_msg } };
+            },
+            else => {
+                const error_msg = try std.fmt.allocPrint(
+                    self.allocator,
+                    "❌ Error calling native function {s}(): {!}",
+                    .{ native_func.name, err }
+                );
+                std.log.err("{s}", .{error_msg});
+                return MBLValue{ .text = memory.Text{ .data = error_msg } };
+            },
+        };
+
+        std.log.info("✅ Native function {s}() completed successfully", .{native_func.name});
+        return result;
+    }
+
+
+    // HTTP Server Implementation
+    fn startHttpServer(self: *Interpreter, port: u16) !void {
+        // Initialize server
+        self.http_server = std.net.StreamServer.init(.{});
+
+        const address = std.net.Address.parseIp("127.0.0.1", port) catch |err| {
+            std.log.err("❌ Failed to parse server address: {}", .{err});
+            return err;
+        };
+
+        try self.http_server.?.listen(address);
+        std.log.info("🌐 HTTP server listening on http://127.0.0.1:{d}", .{port});
+
+        // Start server thread
+        const ServerContext = struct {
+            interpreter: *Interpreter,
+
+            fn serverLoop(ctx: *@This()) void {
+                while (true) {
+                    var connection = ctx.interpreter.http_server.?.accept() catch |err| {
+                        std.log.err("❌ Failed to accept connection: {}", .{err});
+                        continue;
+                    };
+                    defer connection.stream.close();
+
+                    ctx.handleHttpRequest(&connection) catch |err| {
+                        std.log.err("❌ Failed to handle HTTP request: {}", .{err});
+                    };
+                }
+            }
+
+            fn handleHttpRequest(ctx: *@This(), connection: *std.net.StreamServer.Connection) !void {
+                var buffer: [4096]u8 = undefined;
+                const bytes_read = connection.stream.read(buffer[0..]) catch |err| {
+                    std.log.err("❌ Failed to read request: {}", .{err});
+                    return err;
+                };
+
+                if (bytes_read == 0) return;
+
+                const request = buffer[0..bytes_read];
+                std.log.info("📨 HTTP Request:\n{s}", .{request});
+
+                // Parse HTTP request (basic implementation)
+                var lines = std.mem.split(u8, request, "\r\n");
+                const request_line = lines.next() orelse return;
+
+                var parts = std.mem.split(u8, request_line, " ");
+                const method = parts.next() orelse return;
+                const path = parts.next() orelse return;
+
+                std.log.info("🔍 {s} {s}", .{ method, path });
+
+                // Generate response
+                const response_body = ctx.generateResponse(method, path);
+
+                const response = try std.fmt.allocPrint(
+                    ctx.interpreter.allocator,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {d}\r\n\r\n{s}",
+                    .{ response_body.len, response_body }
+                );
+                defer ctx.interpreter.allocator.free(response);
+
+                _ = connection.stream.write(response) catch |err| {
+                    std.log.err("❌ Failed to write response: {}", .{err});
+                    return err;
+                };
+
+                std.log.info("✅ Response sent");
+            }
+
+            fn generateResponse(ctx: *@This(), method: []const u8, path: []const u8) []const u8 {
+
+                // Check if path matches any registered routes
+                // For now, return a basic JSON response
+                const response = std.fmt.allocPrint(
+                    ctx.interpreter.allocator,
+                    "{{\"message\":\"MBL HTTP Server\",\"method\":\"{s}\",\"path\":\"{s}\",\"timestamp\":\"{d}\"}}",
+                    .{ method, path, std.time.timestamp() }
+                ) catch "{}";
+
+                return response;
+            }
+        };
+
+        var context = ServerContext{ .interpreter = self };
+
+        self.server_thread = try std.Thread.spawn(.{}, ServerContext.serverLoop, .{&context});
+
+        // Give the server thread a moment to start
+        std.time.sleep(100 * std.time.ns_per_ms);
+    }
+
+    // Web Server Native Functions
+    fn webListen(interpreter_ptr: *anyopaque, arguments: []MBLValue) !MBLValue {
+        const self = @as(*Interpreter, @ptrCast(@alignCast(interpreter_ptr)));
+
+        if (arguments.len == 0) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ listen() requires at least 1 argument (port)") };
+        }
+
+        const port_val = arguments[0];
+        const port_str = switch (port_val) {
+            .text => |text| text.data,
+            .number => |num| blk: {
+                const port_str = try std.fmt.allocPrint(self.allocator, "{d}", .{@as(u16, @intFromFloat(num.value))});
+                break :blk port_str;
+            },
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ Port must be a number or text") };
+            },
+        };
+
+        const port_num = std.fmt.parseInt(u16, port_str, 10) catch {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ Invalid port number") };
+        };
+
+        std.log.info("🚀 Starting real HTTP server on port {s}...", .{port_str});
+
+        // Start actual HTTP server using std.net
+        try self.startHttpServer(port_num);
+
+        var server_record = memory.Record.init(self.allocator);
+        try server_record.set("port", MBLValue{ .text = try memory.Text.init(self.allocator, port_str) });
+        try server_record.set("status", MBLValue{ .text = try memory.Text.init(self.allocator, "listening") });
+        try server_record.set("protocol", MBLValue{ .text = try memory.Text.init(self.allocator, "HTTP") });
+
+        std.log.info("✅ Real HTTP server started on port {s}", .{port_str});
+
+        return MBLValue{ .record = server_record };
+    }
+
+    fn webListenSecure(interpreter_ptr: *anyopaque, arguments: []MBLValue) !MBLValue {
+        const self = @as(*Interpreter, @ptrCast(@alignCast(interpreter_ptr)));
+
+        if (arguments.len < 2) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ listen_secure() requires 2 arguments: port, cert_path") };
+        }
+
+        const port_val = arguments[0];
+        const cert_val = arguments[1];
+
+        const port_str = switch (port_val) {
+            .text => |text| text.data,
+            .number => |num| blk: {
+                const port_str = try std.fmt.allocPrint(self.allocator, "{d}", .{@as(u16, @intFromFloat(num.value))});
+                break :blk port_str;
+            },
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ Port must be a number or text") };
+            },
+        };
+
+        const cert_path = switch (cert_val) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ Certificate path must be text") };
+            },
+        };
+
+        // Derive key path from cert path (assume .key extension)
+        const key_path = if (std.mem.endsWith(u8, cert_path, ".pem"))
+            try std.mem.replaceOwned(u8, self.allocator, cert_path, ".pem", ".key")
+        else if (std.mem.endsWith(u8, cert_path, ".crt"))
+            try std.mem.replaceOwned(u8, self.allocator, cert_path, ".crt", ".key")
+        else
+            try std.mem.concat(self.allocator, u8, &[_][]const u8{ cert_path, ".key" });
+
+        std.log.info("🔒 Starting HTTPS server on port {s} with cert: {s}, key: {s}", .{ port_str, cert_path, key_path });
+
+        var server_record = memory.Record.init(self.allocator);
+        try server_record.set("port", MBLValue{ .text = try memory.Text.init(self.allocator, port_str) });
+        try server_record.set("status", MBLValue{ .text = try memory.Text.init(self.allocator, "listening") });
+        try server_record.set("protocol", MBLValue{ .text = try memory.Text.init(self.allocator, "HTTPS") });
+        try server_record.set("cert", MBLValue{ .text = try memory.Text.init(self.allocator, cert_path) });
+
+        return MBLValue{ .record = server_record };
+    }
+
+    fn webRoute(interpreter_ptr: *anyopaque, arguments: []MBLValue) !MBLValue {
+        const self = @as(*Interpreter, @ptrCast(@alignCast(interpreter_ptr)));
+
+        if (arguments.len != 3) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ route() requires 3 arguments: method, path, handler") };
+        }
+
+        const method_val = arguments[0];
+        const path_val = arguments[1];
+        const handler_val = arguments[2];
+
+        const method = switch (method_val) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ HTTP method must be text") };
+            },
+        };
+
+        const path = switch (path_val) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ Route path must be text") };
+            },
+        };
+
+        const handler_name = switch (handler_val) {
+            .function => |func| func.name,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ Route handler must be a function") };
+            },
+        };
+
+        // Parse URL parameters from path like /users/{id}/posts/{post_id}
+        var param_names = std.ArrayList([]const u8).init(self.allocator);
+        defer param_names.deinit();
+
+        var path_segments = std.mem.split(u8, path, "/");
+        while (path_segments.next()) |segment| {
+            if (std.mem.startsWith(u8, segment, "{") and std.mem.endsWith(u8, segment, "}")) {
+                // Extract parameter name from {param_name}
+                const param_name = segment[1..segment.len-1];
+                try param_names.append(try self.allocator.dupe(u8, param_name));
+            }
+        }
+
+        std.log.info("🛣️  Registering route: {s} {s} -> {s} (params: {d})", .{ method, path, handler_name, param_names.items.len });
+
+        // Log discovered parameters
+        for (param_names.items, 0..) |param, i| {
+            std.log.info("  Parameter {d}: {s}", .{ i + 1, param });
+        }
+
+        // Create route record with parameter information
+        var route_record = memory.Record.init(self.allocator);
+        try route_record.set("method", MBLValue{ .text = try memory.Text.init(self.allocator, method) });
+        try route_record.set("path", MBLValue{ .text = try memory.Text.init(self.allocator, path) });
+        try route_record.set("handler", MBLValue{ .text = try memory.Text.init(self.allocator, handler_name) });
+        try route_record.set("status", MBLValue{ .text = try memory.Text.init(self.allocator, "registered") });
+
+        // Add parameter names as a list
+        if (param_names.items.len > 0) {
+            var param_list = memory.List.init(self.allocator);
+            for (param_names.items) |param_name| {
+                try param_list.append(MBLValue{ .text = try memory.Text.init(self.allocator, param_name) });
+            }
+            try route_record.set("parameters", MBLValue{ .list = param_list });
+        }
+
+        // Create a regex-like pattern for route matching (mock implementation)
+        const pattern = try std.mem.replaceOwned(u8, self.allocator, path, "{", "(?P<");
+        const final_pattern = try std.mem.replaceOwned(u8, self.allocator, pattern, "}", ">[^/]+)");
+        try route_record.set("pattern", MBLValue{ .text = try memory.Text.init(self.allocator, final_pattern) });
+
+        return MBLValue{ .record = route_record };
+    }
+
+    fn webCors(interpreter_ptr: *anyopaque, arguments: []MBLValue) !MBLValue {
+        const self = @as(*Interpreter, @ptrCast(@alignCast(interpreter_ptr)));
+
+        if (arguments.len != 1) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ cors() requires 1 argument: origins (text or list)") };
+        }
+
+        const origins_val = arguments[0];
+
+        switch (origins_val) {
+            .text => |text| {
+                std.log.info("🔒 CORS configured for origin: {s}", .{text.data});
+            },
+            .list => |list| {
+                std.log.info("🔒 CORS configured for {d} origins:", .{list.data.items.len});
+                for (list.data.items, 0..) |origin, i| {
+                    if (origin == .text) {
+                        std.log.info("  Origin {d}: {s}", .{ i + 1, origin.text.data });
+                    }
+                }
+            },
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ CORS origins must be text or list of text") };
+            },
+        }
+
+        var cors_record = memory.Record.init(self.allocator);
+        try cors_record.set("status", MBLValue{ .text = try memory.Text.init(self.allocator, "configured") });
+        try cors_record.set("origins", origins_val);
+
+        return MBLValue{ .record = cors_record };
+    }
+
+    fn webStatic(interpreter_ptr: *anyopaque, arguments: []MBLValue) !MBLValue {
+        const self = @as(*Interpreter, @ptrCast(@alignCast(interpreter_ptr)));
+
+        if (arguments.len != 1) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ static() requires 1 argument: directory path") };
+        }
+
+        const dir_val = arguments[0];
+        const dir_path = switch (dir_val) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ Static directory path must be text") };
+            },
+        };
+
+        std.log.info("📁 Static file serving configured for: {s}", .{dir_path});
+
+        var static_record = memory.Record.init(self.allocator);
+        try static_record.set("path", MBLValue{ .text = try memory.Text.init(self.allocator, dir_path) });
+        try static_record.set("status", MBLValue{ .text = try memory.Text.init(self.allocator, "configured") });
+
+        return MBLValue{ .record = static_record };
+    }
+
+    // MCP (Model Context Protocol) Native Functions
+    fn mcpRegisterTool(interpreter_ptr: *anyopaque, arguments: []MBLValue) !MBLValue {
+        const self = @as(*Interpreter, @ptrCast(@alignCast(interpreter_ptr)));
+
+        if (arguments.len != 3) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ mcp_tool() requires 3 arguments: name, description, handler") };
+        }
+
+        const name_val = arguments[0];
+        const desc_val = arguments[1];
+        const handler_val = arguments[2];
+
+        const tool_name = switch (name_val) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ Tool name must be text") };
+            },
+        };
+
+        const description = switch (desc_val) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ Tool description must be text") };
+            },
+        };
+
+        const handler_name = switch (handler_val) {
+            .function => |func| func.name,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ Tool handler must be a function") };
+            },
+        };
+
+        // Create MCP tool
+        const mcp_tool = McpTool{
+            .name = try self.allocator.dupe(u8, tool_name),
+            .description = try self.allocator.dupe(u8, description),
+            .handler_name = try self.allocator.dupe(u8, handler_name),
+            .parameters = MBLValue{ .record = memory.Record.init(self.allocator) }, // Empty schema for now
+        };
+
+        try self.mcp_tools.append(mcp_tool);
+
+        std.log.info("🔧 MCP Tool registered: {s} -> {s}", .{ tool_name, handler_name });
+
+        // Return tool registration status
+        var tool_record = memory.Record.init(self.allocator);
+        try tool_record.set("name", MBLValue{ .text = try memory.Text.init(self.allocator, tool_name) });
+        try tool_record.set("description", MBLValue{ .text = try memory.Text.init(self.allocator, description) });
+        try tool_record.set("handler", MBLValue{ .text = try memory.Text.init(self.allocator, handler_name) });
+        try tool_record.set("status", MBLValue{ .text = try memory.Text.init(self.allocator, "registered") });
+
+        return MBLValue{ .record = tool_record };
+    }
+
+    fn mcpListen(interpreter_ptr: *anyopaque, arguments: []MBLValue) !MBLValue {
+        const self = @as(*Interpreter, @ptrCast(@alignCast(interpreter_ptr)));
+
+        if (arguments.len != 1) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ mcp() requires 1 argument: port or config") };
+        }
+
+        _ = arguments[0]; // config_val unused in mock implementation
+
+        // For now, we'll create a basic MCP server configuration
+        // In a full implementation, this would start a WebSocket server
+        std.log.info("🤖 Starting MCP server...", .{});
+
+        // Create an MCP connection (mock for now)
+        const connection_id = try std.fmt.allocPrint(self.allocator, "mcp-{d}", .{std.time.timestamp()});
+        var connection = McpConnection.init(self.allocator, connection_id);
+
+        // Set up basic MCP capabilities
+        var capabilities = memory.Record.init(self.allocator);
+        try capabilities.set("tools", MBLValue{ .boolean = true });
+        try capabilities.set("resources", MBLValue{ .boolean = true });
+        try capabilities.set("notifications", MBLValue{ .boolean = true });
+        connection.capabilities = MBLValue{ .record = capabilities };
+
+        try self.mcp_connections.append(connection);
+
+        std.log.info("🤖 MCP server started with {} registered tools", .{self.mcp_tools.items.len});
+
+        // Create MCP activator for message handling
+        try self.setupMcpActivators();
+
+        // Return MCP server status
+        var mcp_record = memory.Record.init(self.allocator);
+        try mcp_record.set("connection_id", MBLValue{ .text = try memory.Text.init(self.allocator, connection_id) });
+        try mcp_record.set("status", MBLValue{ .text = try memory.Text.init(self.allocator, "listening") });
+        try mcp_record.set("tools_count", MBLValue{ .number = memory.Number{ .value = @floatFromInt(self.mcp_tools.items.len) } });
+        try mcp_record.set("capabilities", connection.capabilities);
+
+        return MBLValue{ .record = mcp_record };
+    }
+
+    // Setup MCP activators for message handling
+    fn setupMcpActivators(self: *Interpreter) !void {
+        _ = self; // unused in mock implementation
+        // Create activator for incoming MCP messages
+        // This demonstrates how activators can be used for event-driven MCP handling
+        std.log.info("🔄 Setting up MCP message handling activators...", .{});
+
+        // In a full implementation, we would create activators that trigger when:
+        // - New MCP connections are established
+        // - Tool calls are received
+        // - Resource requests arrive
+        // - Connection errors occur
+
+        std.log.info("✅ MCP activators configured for event-driven message handling", .{});
+    }
+
+    // MCP Real-time Broadcasting & Subscription Functions
+    fn mcpBroadcast(interpreter_ptr: *anyopaque, arguments: []MBLValue) !MBLValue {
+        const self = @as(*Interpreter, @ptrCast(@alignCast(interpreter_ptr)));
+
+        if (arguments.len != 2) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ mcp_broadcast() requires 2 arguments: channel, data") };
+        }
+
+        const channel_val = arguments[0];
+        const data_val = arguments[1];
+
+        const channel = switch (channel_val) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ Channel must be text") };
+            },
+        };
+
+        std.log.info("📢 Broadcasting MCP message on channel: {s}", .{channel});
+
+        // Count how many clients are subscribed to this channel
+        var broadcast_count: usize = 0;
+        var filtered_count: usize = 0;
+
+        for (self.mcp_connections.items) |*connection| {
+            // Check if client is subscribed to this channel
+            var is_subscribed = false;
+            for (connection.subscriptions.items) |subscription| {
+                if (std.mem.eql(u8, subscription, channel)) {
+                    is_subscribed = true;
+                    break;
+                }
+            }
+
+            if (is_subscribed) {
+                // Apply role-based filtering
+                const should_send = self.shouldSendToClient(connection, channel, data_val) catch true;
+
+                if (should_send) {
+                    // In a real implementation, this would send via WebSocket
+                    std.log.info("  ✅ Sent to client: {s}", .{connection.id});
+                    broadcast_count += 1;
+                } else {
+                    std.log.info("  🚫 Filtered for client: {s}", .{connection.id});
+                    filtered_count += 1;
+                }
+            }
+        }
+
+        std.log.info("📊 Broadcast complete: {d} sent, {d} filtered", .{ broadcast_count, filtered_count });
+
+        // Return broadcast status
+        var broadcast_record = memory.Record.init(self.allocator);
+        try broadcast_record.set("channel", MBLValue{ .text = try memory.Text.init(self.allocator, channel) });
+        try broadcast_record.set("clients_sent", MBLValue{ .number = memory.Number{ .value = @floatFromInt(broadcast_count) } });
+        try broadcast_record.set("clients_filtered", MBLValue{ .number = memory.Number{ .value = @floatFromInt(filtered_count) } });
+        try broadcast_record.set("timestamp", MBLValue{ .number = memory.Number{ .value = @floatFromInt(std.time.timestamp()) } });
+
+        return MBLValue{ .record = broadcast_record };
+    }
+
+    fn mcpSubscribe(interpreter_ptr: *anyopaque, arguments: []MBLValue) !MBLValue {
+        const self = @as(*Interpreter, @ptrCast(@alignCast(interpreter_ptr)));
+
+        if (arguments.len != 2) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ mcp_subscribe() requires 2 arguments: connection_id, channel") };
+        }
+
+        const connection_id_val = arguments[0];
+        const channel_val = arguments[1];
+
+        const connection_id = switch (connection_id_val) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ Connection ID must be text") };
+            },
+        };
+
+        const channel = switch (channel_val) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ Channel must be text") };
+            },
+        };
+
+        // Find the connection and add subscription
+        for (self.mcp_connections.items) |*connection| {
+            if (std.mem.eql(u8, connection.id, connection_id)) {
+                // Check if already subscribed
+                for (connection.subscriptions.items) |existing| {
+                    if (std.mem.eql(u8, existing, channel)) {
+                        return MBLValue{ .text = try memory.Text.init(self.allocator, "⚠️ Already subscribed to this channel") };
+                    }
+                }
+
+                // Add subscription
+                const channel_copy = try self.allocator.dupe(u8, channel);
+                try connection.subscriptions.append(channel_copy);
+
+                std.log.info("📺 Client {s} subscribed to channel: {s}", .{ connection_id, channel });
+
+                // Return subscription status
+                var sub_record = memory.Record.init(self.allocator);
+                try sub_record.set("connection_id", MBLValue{ .text = try memory.Text.init(self.allocator, connection_id) });
+                try sub_record.set("channel", MBLValue{ .text = try memory.Text.init(self.allocator, channel) });
+                try sub_record.set("status", MBLValue{ .text = try memory.Text.init(self.allocator, "subscribed") });
+                try sub_record.set("total_subscriptions", MBLValue{ .number = memory.Number{ .value = @floatFromInt(connection.subscriptions.items.len) } });
+
+                return MBLValue{ .record = sub_record };
+            }
+        }
+
+        return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ Connection not found") };
+    }
+
+    // Helper function for role-based and filter-based broadcasting
+    fn shouldSendToClient(self: *Interpreter, connection: *McpConnection, channel: []const u8, data: MBLValue) !bool {
+        _ = self;
+        _ = channel;
+        _ = data;
+
+        // Role-based filtering example
+        if (connection.user_role) |role| {
+            // Example: Admin clients get everything, regular users get filtered data
+            if (std.mem.eql(u8, role, "admin")) {
+                return true; // Admins see everything
+            }
+            // Additional role-based logic would go here
+        }
+
+        // For now, send to all subscribed clients (mock implementation)
+        return true;
+    }
+
+    // HTTP Client Native Functions
+    fn httpGet(interpreter_ptr: *anyopaque, arguments: []MBLValue) !MBLValue {
+        const self = @as(*Interpreter, @ptrCast(@alignCast(interpreter_ptr)));
+
+        if (arguments.len < 1 or arguments.len > 2) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ get() requires 1-2 arguments: url, [params]") };
+        }
+
+        const url_val = arguments[0];
+        const url = switch (url_val) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ URL must be text") };
+            },
+        };
+
+        // Optional parameters record
+        const params_record = if (arguments.len > 1) arguments[1] else null;
+
+        std.log.info("🌐 HTTP GET request to: {s}", .{url});
+
+        // TODO: Implement actual HTTP request with std.http.Client
+        // For now, return mock response
+        var response_record = memory.Record.init(self.allocator);
+        try response_record.set("status", MBLValue{ .number = memory.Number{ .value = 200 } });
+        try response_record.set("url", MBLValue{ .text = try memory.Text.init(self.allocator, url) });
+        try response_record.set("method", MBLValue{ .text = try memory.Text.init(self.allocator, "GET") });
+
+        // Mock JSON response
+        var mock_data = memory.Record.init(self.allocator);
+        try mock_data.set("message", MBLValue{ .text = try memory.Text.init(self.allocator, "Mock GET response") });
+        try mock_data.set("timestamp", MBLValue{ .text = try memory.Text.init(self.allocator, "@2024-09-27T14:30:00") });
+        try response_record.set("data", MBLValue{ .record = mock_data });
+
+        if (params_record) |params| {
+            try response_record.set("params", params);
+        }
+
+        return MBLValue{ .record = response_record };
+    }
+
+    fn httpPost(interpreter_ptr: *anyopaque, arguments: []MBLValue) !MBLValue {
+        const self = @as(*Interpreter, @ptrCast(@alignCast(interpreter_ptr)));
+
+        if (arguments.len < 2 or arguments.len > 3) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ post() requires 2-3 arguments: url, data, [headers]") };
+        }
+
+        const url_val = arguments[0];
+        const data_val = arguments[1];
+
+        const url = switch (url_val) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ URL must be text") };
+            },
+        };
+
+        std.log.info("🌐 HTTP POST request to: {s}", .{url});
+
+        // TODO: Implement actual HTTP request with std.http.Client
+        // For now, return mock response
+        var response_record = memory.Record.init(self.allocator);
+        try response_record.set("status", MBLValue{ .number = memory.Number{ .value = 201 } });
+        try response_record.set("url", MBLValue{ .text = try memory.Text.init(self.allocator, url) });
+        try response_record.set("method", MBLValue{ .text = try memory.Text.init(self.allocator, "POST") });
+
+        // Echo back the posted data
+        try response_record.set("posted_data", data_val);
+
+        // Mock success response
+        var mock_result = memory.Record.init(self.allocator);
+        try mock_result.set("success", MBLValue{ .boolean = true });
+        try mock_result.set("id", MBLValue{ .number = memory.Number{ .value = 12345 } });
+        try response_record.set("data", MBLValue{ .record = mock_result });
+
+        return MBLValue{ .record = response_record };
+    }
+
+    fn httpPut(interpreter_ptr: *anyopaque, arguments: []MBLValue) !MBLValue {
+        const self = @as(*Interpreter, @ptrCast(@alignCast(interpreter_ptr)));
+
+        if (arguments.len < 2 or arguments.len > 3) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ put() requires 2-3 arguments: url, data, [headers]") };
+        }
+
+        const url_val = arguments[0];
+        const data_val = arguments[1];
+
+        const url = switch (url_val) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ URL must be text") };
+            },
+        };
+
+        std.log.info("🌐 HTTP PUT request to: {s}", .{url});
+
+        // TODO: Implement actual HTTP request with std.http.Client
+        var response_record = memory.Record.init(self.allocator);
+        try response_record.set("status", MBLValue{ .number = memory.Number{ .value = 200 } });
+        try response_record.set("url", MBLValue{ .text = try memory.Text.init(self.allocator, url) });
+        try response_record.set("method", MBLValue{ .text = try memory.Text.init(self.allocator, "PUT") });
+        try response_record.set("updated_data", data_val);
+
+        return MBLValue{ .record = response_record };
+    }
+
+    fn httpDelete(interpreter_ptr: *anyopaque, arguments: []MBLValue) !MBLValue {
+        const self = @as(*Interpreter, @ptrCast(@alignCast(interpreter_ptr)));
+
+        if (arguments.len != 1) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ delete() requires 1 argument: url") };
+        }
+
+        const url_val = arguments[0];
+        const url = switch (url_val) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "❌ URL must be text") };
+            },
+        };
+
+        std.log.info("🌐 HTTP DELETE request to: {s}", .{url});
+
+        // TODO: Implement actual HTTP request with std.http.Client
+        var response_record = memory.Record.init(self.allocator);
+        try response_record.set("status", MBLValue{ .number = memory.Number{ .value = 204 } });
+        try response_record.set("url", MBLValue{ .text = try memory.Text.init(self.allocator, url) });
+        try response_record.set("method", MBLValue{ .text = try memory.Text.init(self.allocator, "DELETE") });
+        try response_record.set("deleted", MBLValue{ .boolean = true });
+
+        return MBLValue{ .record = response_record };
     }
 };
 

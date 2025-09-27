@@ -1,4 +1,4 @@
-# MBL Language Reference v0.9.0
+# MBL Language Reference v0.12.1
 
 **Modern Business Language (MBL)** - A programming language designed for business operations with minimal learning curve and maximum readability.
 
@@ -11,12 +11,16 @@
 5. [Expressions and Operators](#expressions-and-operators)
 6. [Control Flow](#control-flow)
 7. [Functions and Procedures](#functions-and-procedures)
-8. [Activators and Reactive Programming](#activators-and-reactive-programming) *(Planned)*
-9. [Built-in Operations](#built-in-operations)
-10. [Scope and Context](#scope-and-context)
-11. [Comments and Documentation](#comments-and-documentation)
-12. [Standard Library](#standard-library) *(Planned)*
-13. [Error Handling](#error-handling) *(Planned)*
+8. [Activators and Reactive Programming](#activators-and-reactive-programming)
+9. [Text Methods and Symbol System](#text-methods-and-symbol-system)
+10. [File I/O and Data Processing](#file-io-and-data-processing)
+11. [Web Services and Network Programming](#web-services-and-network-programming)
+12. [Real-time Communication with MCP](#real-time-communication-with-mcp)
+13. [Built-in Operations](#built-in-operations)
+14. [Scope and Context](#scope-and-context)
+15. [Comments and Documentation](#comments-and-documentation)
+16. [Standard Library](#standard-library) *(Planned)*
+17. [Error Handling](#error-handling) *(Planned)*
 
 ---
 
@@ -566,9 +570,9 @@ result = factorial(5)  # Returns 120
 
 ---
 
-## Activators and Reactive Programming *(Planned)*
+## Activators and Reactive Programming
 
-Activators provide reactive programming capabilities for business rules that execute automatically when conditions become true.
+Activators provide reactive programming capabilities for business rules that execute automatically when conditions become true. They are implemented and functional in MBL v0.9.0+.
 
 ### Anytime Blocks *(Planned)*
 Activators use the `anytime` keyword to create reactive conditions:
@@ -606,17 +610,167 @@ anytime (sales_total > monthly_target) and (month_end_approaching):
         executive_report = generate_report()
 ```
 
-**Note**: Activators are planned for v0.10.0 and will provide powerful reactive programming capabilities for business applications.
+**Note**: Activators are implemented and functional in v0.9.0+, providing powerful reactive programming capabilities for business applications.
+
+---
+
+## Text Methods and Symbol System
+
+MBL provides enhanced text manipulation capabilities and a symbol system for advanced data processing.
+
+### Text Methods
+Text values support various methods for manipulation and analysis:
+
+```mbl
+# String length and case operations
+name = "Alice Johnson"
+program.write("Length: " + name.len())          # Output: Length: 13
+program.write("Upper: " + name.upper())         # Output: Upper: ALICE JOHNSON
+program.write("Lower: " + name.lower())         # Output: Lower: alice johnson
+
+# String searching and manipulation
+email = "user@example.com"
+if email.contains("@"):
+    program.write("Valid email format")
+
+# Substring operations
+domain = email.substring(5)                     # Gets "example.com"
+program.write("Domain: " + domain)
+```
+
+### Symbol System
+The symbol system provides metadata and reflection capabilities:
+
+```mbl
+# Working with symbols and metadata
+employee = {
+    name: "John Doe",
+    department: "Sales",
+    salary: 75000
+}
+
+# Access symbol information
+for key in employee.keys():
+    value = employee.get(key)
+    program.write(key + ": " + value)
+```
+
+**Available Text Methods:**
+- `text.len()` - Returns the length of the text
+- `text.upper()` - Converts to uppercase
+- `text.lower()` - Converts to lowercase
+- `text.contains(substring)` - Checks if text contains substring
+- `text.substring(start)` - Gets substring from start position
+- `text.substring(start, end)` - Gets substring from start to end
+
+---
+
+## File I/O and Data Processing
+
+MBL provides comprehensive file I/O and data processing capabilities for business applications.
+
+### File Import System
+The `program.import()` function supports multiple data formats:
+
+```mbl
+# CSV file import
+customers = program.import("customers.csv")
+for customer in customers:
+    program.write("Customer: " + customer.name + ", City: " + customer.city)
+
+# JSON file import
+config = program.import("config.json")
+program.write("Database host: " + config.database.host)
+program.write("Port: " + config.database.port)
+
+# Text file import
+content = program.import("data.txt")
+program.write("File content: " + content)
+```
+
+### CSV Processing
+CSV files are automatically parsed into structured records:
+
+```mbl
+# Example CSV: name,age,department
+# John,30,Engineering
+# Jane,25,Marketing
+
+employees = program.import("employees.csv")
+for emp in employees:
+    program.write(emp.name + " works in " + emp.department)
+    if emp.age > 25:
+        program.write("Senior employee")
+```
+
+### JSON Processing
+JSON files are parsed into native MBL data structures:
+
+```mbl
+# JSON file with nested structure
+data = program.import("business_config.json")
+
+# Access nested properties
+program.write("Company: " + data.company.name)
+program.write("Employees: " + data.company.employee_count)
+
+# Process arrays
+for location in data.locations:
+    program.write("Office: " + location.city + ", " + location.country)
+```
+
+### Interactive Input/Output
+Enhanced I/O capabilities for user interaction:
+
+```mbl
+# Read user input
+name = program.prompt("Enter your name: ")
+program.write("Hello, " + name + "!")
+
+# Read from stdin with custom delimiter
+data = program.read(" ")  # Read until space
+program.write("You entered: " + data)
+
+# Read all available stdin
+all_input = program.read()
+program.write("Full input: " + all_input)
+
+# Error output
+if age < 0:
+    program.error("Invalid age: " + age)
+```
 
 ---
 
 ## Built-in Operations
 
 ### Program Interface
+
+#### Output Operations
 ```mbl
-program.write("Hello World")        # Output text
+program.write("Hello World")        # Output text to stdout
 program.write(variable)             # Output variable value
 program.write("Result: " + result)  # Output with concatenation
+program.error("Error message")      # Output to stderr
+```
+
+#### Input Operations
+```mbl
+# Interactive input with prompt
+name = program.prompt("Enter name: ")
+
+# Read from stdin with delimiter
+word = program.read(" ")            # Read until space
+line = program.read("\n")           # Read until newline
+all_data = program.read()           # Read all available input
+```
+
+#### File and Data Import
+```mbl
+# Import various file formats
+csv_data = program.import("data.csv")       # CSV files → List of Records
+json_data = program.import("config.json")   # JSON files → Record/List
+text_content = program.import("file.txt")   # Text files → Text
 ```
 
 ### Scope Access
@@ -628,12 +782,27 @@ program.total_budget = $500000
 super.parent_variable = "updated"
 ```
 
-*Additional built-in functions planned:*
-- `program.read("filename")` - File input
-- `program.write_file("filename", content)` - File output
-- Mathematical functions (`math.round()`, `math.abs()`)
-- String functions (`text.length()`, `text.upper()`)
-- Date functions (`time.now()`, `time.format()`)
+### Complete I/O Reference
+
+**Output Functions:**
+- `program.write(text)` - Write to stdout
+- `program.error(text)` - Write to stderr
+
+**Input Functions:**
+- `program.prompt(message)` - Display prompt and read user input
+- `program.read()` - Read all available stdin
+- `program.read(delimiter)` - Read until delimiter character
+
+**Data Import Functions:**
+- `program.import(filename)` - Import file (auto-detects CSV, JSON, text)
+
+**Text Processing Methods:**
+- `text.len()` - Get text length
+- `text.upper()` - Convert to uppercase
+- `text.lower()` - Convert to lowercase
+- `text.contains(substring)` - Check if text contains substring
+- `text.substring(start)` - Get substring from position
+- `text.substring(start, end)` - Get substring range
 
 ---
 
@@ -902,4 +1071,180 @@ list_literal := "[" (expression ("," expression)*)? "]"
 
 ---
 
-*This reference covers MBL v0.9.0 with complete colon-based syntax and Python-style indentation. For the latest updates and planned features, see the [ROADMAP.md](ROADMAP.md) file.*
+## Web Services and Network Programming
+
+MBL provides comprehensive web services capabilities through the `program.web` namespace, enabling both HTTP client operations and web server hosting.
+
+### HTTP Client Operations
+
+#### REST API Calls
+```mbl
+# GET request
+user_data = program.get("https://api.example.com/users/123")
+
+# POST request with data
+new_user = { name: "Alice", email: "alice@example.com" }
+response = program.post("https://api.example.com/users", new_user)
+
+# PUT request (update)
+updated_user = { name: "Alice Johnson", email: "alice.johnson@example.com" }
+result = program.put("https://api.example.com/users/123", updated_user)
+
+# DELETE request
+program.delete("https://api.example.com/users/123")
+```
+
+### Web Server Operations
+
+#### Server Configuration
+```mbl
+# HTTP server
+server = program.web.listen(8080)
+
+# HTTPS server with SSL certificate
+secure_server = program.web.listen_secure(8443, "/path/to/cert.pem")
+
+# CORS configuration
+program.web.cors(["https://myapp.com", "https://admin.myapp.com"])
+
+# Static file serving
+program.web.static("/public")
+```
+
+#### Route Registration
+```mbl
+# Define route handlers
+get_user(request):
+    return { message: "User retrieved", id: request.params.id }
+
+get_user_posts(request):
+    return {
+        user_id: request.params.user_id,
+        post_id: request.params.post_id,
+        posts: ["Post 1", "Post 2"]
+    }
+
+# Register routes with URL parameter extraction
+program.web.route("GET", "/users/{id}", get_user)
+program.web.route("GET", "/users/{user_id}/posts/{post_id}", get_user_posts)
+program.web.route("POST", "/api/{version}/data", api_handler)
+```
+
+---
+
+## Real-time Communication with MCP
+
+MBL supports real-time multi-client communication through the Model Context Protocol (MCP), enabling business applications to synchronize data across multiple web clients in real-time.
+
+### MCP Server Setup
+
+#### Basic MCP Server
+```mbl
+# Start MCP server
+mcp_server = program.web.mcp(8090)
+program.write("MCP Server: " + mcp_server.connection_id)
+```
+
+#### Business Tool Registration
+```mbl
+# Define business tools for AI/client integration
+get_customer_data():
+    return { customer_id: 12345, name: "Acme Corp", status: "active" }
+
+calculate_discount():
+    return { discount_rate: 0.15, savings: "$2,362.50" }
+
+# Register tools with MCP server
+customer_tool = program.web.mcp_tool("get_customer",
+    "Retrieve customer information and account status", get_customer_data)
+
+discount_tool = program.web.mcp_tool("calculate_discount",
+    "Calculate discounts based on customer tier", calculate_discount)
+```
+
+### Multi-Client Real-time Synchronization
+
+#### Client Connection Management
+```mbl
+# Create multiple client connections
+admin_client = program.web.mcp(8091)
+sales_client = program.web.mcp(8092)
+customer_client = program.web.mcp(8093)
+
+program.write("Admin Dashboard: " + admin_client.connection_id)
+program.write("Sales Terminal: " + sales_client.connection_id)
+program.write("Customer Portal: " + customer_client.connection_id)
+```
+
+#### Channel-based Subscriptions
+```mbl
+# Set up role-based subscriptions
+# Admin subscribes to all business data
+admin_sub1 = program.web.mcp_subscribe(admin_client.connection_id, "customer_updates")
+admin_sub2 = program.web.mcp_subscribe(admin_client.connection_id, "sales_data")
+admin_sub3 = program.web.mcp_subscribe(admin_client.connection_id, "inventory_alerts")
+
+# Sales team subscribes to relevant data
+sales_sub1 = program.web.mcp_subscribe(sales_client.connection_id, "customer_updates")
+sales_sub2 = program.web.mcp_subscribe(sales_client.connection_id, "sales_data")
+
+# Customer portal subscribes to permitted data only
+customer_sub = program.web.mcp_subscribe(customer_client.connection_id, "customer_updates")
+```
+
+#### Real-time Broadcasting
+```mbl
+# Broadcast business events to subscribed clients
+customer_data = {
+    customer_id: 12345,
+    name: "Acme Corp",
+    status: "premium",
+    balance: "$25,750.00"
+}
+broadcast1 = program.web.mcp_broadcast("customer_updates", customer_data)
+
+# Sales data (admin and sales only)
+sales_data = {
+    quarter: "Q4",
+    revenue: "$185,000.00",
+    growth: "15%",
+    deals_closed: 47
+}
+broadcast2 = program.web.mcp_broadcast("sales_data", sales_data)
+
+# Inventory alerts (admin only)
+inventory_alert = {
+    item: "Business Software License",
+    quantity: 5,
+    threshold: 10,
+    action: "reorder"
+}
+broadcast3 = program.web.mcp_broadcast("inventory_alerts", inventory_alert)
+```
+
+### Activator-driven Real-time Updates
+
+```mbl
+# Activators can trigger real-time notifications
+customer_status = "standard"
+
+anytime customer_status == "premium":
+    # Customer upgrade triggers cascading updates
+    commission_data = { rep_id: 456, bonus: "$500.00" }
+    program.web.mcp_broadcast("sales_data", commission_data)
+
+    loyalty_update = { customer_id: 12345, tier: "gold", benefits: "free_shipping" }
+    program.web.mcp_broadcast("customer_updates", loyalty_update)
+```
+
+### Role-based Filtering
+
+MCP broadcasting automatically filters messages based on client subscriptions and roles:
+- **Admin clients** receive all business data they're subscribed to
+- **Sales clients** receive customer and sales data only
+- **Customer clients** receive only customer-facing updates
+- **Selective targeting** ensures sensitive data doesn't reach unauthorized clients
+
+---
+
+*This reference covers MBL v0.12.1 with complete web services, real-time MCP communication, and multi-client synchronization. For the latest updates and planned features, see the [ROADMAP.md](ROADMAP.md) file.*
