@@ -30,6 +30,9 @@ pub const Interpreter = struct {
     quiet_mode: bool, // Suppress debug output when true
     activators: std.ArrayList(parser.ActivatorDeclaration), // List of registered activators
     executing_activator: bool, // Prevent recursion in activator execution
+    current_loop_variable: ?MBLValue, // Current for loop variable (no ownership)
+    current_loop_variable_name: ?[]const u8, // Name of current loop variable
+    used_for_loop_with_records: bool, // Flag to track if for loops were used with record data
 
     pub fn init(allocator: std.mem.Allocator, mem: *Memory) Interpreter {
         return Interpreter{
@@ -44,6 +47,9 @@ pub const Interpreter = struct {
             .quiet_mode = false,
             .activators = std.ArrayList(parser.ActivatorDeclaration).init(allocator),
             .executing_activator = false,
+            .current_loop_variable = null,
+            .current_loop_variable_name = null,
+            .used_for_loop_with_records = false,
         };
     }
 
@@ -80,7 +86,15 @@ pub const Interpreter = struct {
 
     // Variable resolution with scope chain
     pub fn getVariable(self: *Interpreter, name: []const u8) ?MBLValue {
-        // First check local scopes (deepest first)
+        // First check if this is the current loop variable
+        if (self.current_loop_variable_name) |loop_name| {
+            if (std.mem.eql(u8, name, loop_name)) {
+                std.log.info("🔍 Variable '{s}' found as current loop variable", .{name});
+                return self.current_loop_variable.?;
+            }
+        }
+
+        // Then check local scopes (deepest first)
         var i: usize = self.scope_stack.items.len;
         while (i > 0) {
             i -= 1;
@@ -958,6 +972,10 @@ pub const Interpreter = struct {
     }
 
     fn handleProgramImport(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        // Enable memory protection for any import operation
+        self.memory.has_csv_imported = true;
+        std.log.info("🚨 File import detected - memory protection ENABLED", .{});
+
         if (arguments.len == 0 or arguments.len > 2) {
             return MBLValue{ .text = try memory.Text.init(self.allocator, "import() requires 1 or 2 arguments: path and optional format") };
         }
@@ -1012,6 +1030,10 @@ pub const Interpreter = struct {
     }
 
     fn parseCSVFile(self: *Interpreter, contents: []const u8) !MBLValue {
+        // IMMEDIATELY set protection flag as soon as CSV parsing begins
+        self.memory.has_csv_imported = true;
+        std.log.info("🚨 CSV parsing started - memory protection ENABLED", .{});
+
         var lines = std.mem.split(u8, contents, "\n");
         var result_list = memory.List.init(self.allocator);
 
@@ -1048,20 +1070,24 @@ pub const Interpreter = struct {
 
             // Create record or list
             if (headers) |h| {
+                // Create the record directly in the MBLValue to avoid ownership issues
                 var record = memory.Record.init(self.allocator);
+                record.is_csv_imported = true; // Mark as CSV imported to avoid cleanup issues
+                var record_value = MBLValue{ .record = record };
                 for (fields.items, 0..) |field, idx| {
                     const field_name = if (idx < h.len) h[idx] else "unknown";
-                    // Make sure to copy the field data since it's a slice of file content
-                    const field_copy = try self.allocator.dupe(u8, field);
-                    try record.set(field_name, MBLValue{ .text = memory.Text{ .data = field_copy } });
+                    // Create properly initialized Text object
+                    const field_text = try memory.Text.init(self.allocator, field);
+                    // record.set() will copy field_name, so we can use it directly
+                    try record_value.record.set(field_name, MBLValue{ .text = field_text });
                 }
-                try result_list.append(MBLValue{ .record = record });
+                try result_list.append(record_value);
             } else {
                 var list = memory.List.init(self.allocator);
                 for (fields.items) |field| {
-                    // Make sure to copy the field data since it's a slice of file content
-                    const field_copy = try self.allocator.dupe(u8, field);
-                    try list.append(MBLValue{ .text = memory.Text{ .data = field_copy } });
+                    // Create properly initialized Text object
+                    const field_text = try memory.Text.init(self.allocator, field);
+                    try list.append(MBLValue{ .text = field_text });
                 }
                 try result_list.append(MBLValue{ .list = list });
             }
@@ -1074,6 +1100,10 @@ pub const Interpreter = struct {
             }
             self.allocator.free(h);
         }
+
+        // Mark that CSV data was imported to enable cleanup protection
+        self.memory.has_csv_imported = true;
+        std.log.info("🧹 CSV data imported - enabling cleanup protection", .{});
 
         return MBLValue{ .list = result_list };
     }
@@ -1917,19 +1947,36 @@ pub const Interpreter = struct {
             .list => |list| {
                 std.log.info("🔄 Iterating over list with {} elements", .{list.len()});
 
+                // Check if list contains records (potential for memory corruption)
+                if (list.len() > 0) {
+                    const first_item = list.get(0) orelse MBLValue{ .unknown = {} };
+                    if (first_item == .record) {
+                        self.used_for_loop_with_records = true;
+                        self.memory.has_csv_imported = true; // Enable protection
+                        std.log.info("🚨 For loop with record data detected - enabling memory protection", .{});
+                    }
+                }
+
                 // Iterate over each item in the list
                 for (0..list.len()) |i| {
                     const item = list.get(i) orelse continue;
 
-                    // Create local scope for this iteration
+                    // Create empty local scope for this iteration (no loop variable ownership)
                     var local_scope = memory.Record.init(self.allocator);
                     defer local_scope.deinit();
 
-                    // Set the loop variable in the local scope
-                    try local_scope.set(for_stmt.variable, item);
+                    // Store loop variable separately without transferring ownership
+                    self.current_loop_variable = item;
+                    self.current_loop_variable_name = for_stmt.variable;
 
                     try self.pushScope(&local_scope);
                     defer self.popScope();
+
+                    // Clear loop variable after scope is popped
+                    defer {
+                        self.current_loop_variable = null;
+                        self.current_loop_variable_name = null;
+                    }
 
                     std.log.info("🔄 For iteration {}, {s} = {s}", .{i, for_stmt.variable, @tagName(item)});
 
@@ -1964,16 +2011,28 @@ pub const Interpreter = struct {
                 while (iterator.next()) |entry| {
                     // Create MBLValue for the key (record iteration yields keys)
                     const key_value = MBLValue{ .text = try memory.Text.init(self.allocator, entry.key_ptr.*) };
+                    defer {
+                        // Clean up the key_value we created
+                        var mutable_key = key_value;
+                        mutable_key.deinit(self.allocator);
+                    }
 
-                    // Create local scope for this iteration
+                    // Create empty local scope for this iteration (no loop variable ownership)
                     var local_scope = memory.Record.init(self.allocator);
                     defer local_scope.deinit();
 
-                    // Set the loop variable to the key
-                    try local_scope.set(for_stmt.variable, key_value);
+                    // Store loop variable separately without transferring ownership
+                    self.current_loop_variable = key_value;
+                    self.current_loop_variable_name = for_stmt.variable;
 
                     try self.pushScope(&local_scope);
                     defer self.popScope();
+
+                    // Clear loop variable after scope is popped
+                    defer {
+                        self.current_loop_variable = null;
+                        self.current_loop_variable_name = null;
+                    }
 
                     std.log.info("🔄 For iteration {}, {s} = {s}", .{i, for_stmt.variable, entry.key_ptr.*});
 

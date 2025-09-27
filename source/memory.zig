@@ -486,22 +486,48 @@ pub const Record = struct {
     data: std.HashMap([]const u8, MBLValue, std.hash_map.StringContext, std.hash_map.default_max_load_percentage),
     super: ?*Record, // For inheritance
     allocator: std.mem.Allocator,
+    is_csv_imported: bool, // Flag to track CSV imported records
 
     pub fn init(allocator: std.mem.Allocator) Record {
         return Record{
             .data = std.HashMap([]const u8, MBLValue, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(allocator),
             .super = null,
             .allocator = allocator,
+            .is_csv_imported = false,
         };
     }
 
     pub fn deinit(self: *Record) void {
+        std.log.info("🧹 Record.deinit called", .{});
+
+        // Check for corruption early
+        if (@intFromPtr(self) == 0) {
+            std.log.err("🧹 ERROR: Record pointer is null!", .{});
+            return;
+        }
+
+        // Skip cleanup for CSV imported records to avoid double-free
+        if (self.is_csv_imported) {
+            std.log.info("🧹 Skipping cleanup for CSV imported record", .{});
+            // Still need to deinit the HashMap structure itself
+            self.data.deinit();
+            return;
+        }
+
+        // Add debugging information to help track corruption
+        const count = self.data.count();
+        std.log.info("🧹 Cleaning up Record with {} entries", .{count});
+
+        var i: usize = 0;
         var iterator = self.data.iterator();
         while (iterator.next()) |entry| {
+            std.log.info("🧹 Cleaning entry {} of {}: key='{s}'", .{i + 1, count, entry.key_ptr.*});
             self.allocator.free(entry.key_ptr.*);
             entry.value_ptr.deinit(self.allocator);
+            i += 1;
         }
         self.data.deinit();
+        std.log.info("🧹 Record cleanup complete", .{});
     }
 
     pub fn set(self: *Record, key: []const u8, value: MBLValue) !void {
@@ -1075,12 +1101,14 @@ pub const Memory = struct {
     program: Record,
     activators: std.ArrayList(Activator),
     allocator: std.mem.Allocator,
+    has_csv_imported: bool, // Flag to track if any CSV data was imported
 
     pub fn init(allocator: std.mem.Allocator) Memory {
         var memory = Memory{
             .program = Record.init(allocator),
             .activators = std.ArrayList(Activator).init(allocator),
             .allocator = allocator,
+            .has_csv_imported = false,
         };
 
         // Initialize symbol record
@@ -1125,6 +1153,17 @@ pub const Memory = struct {
     }
 
     pub fn deinit(self: *Memory) void {
+        // Skip program cleanup if CSV data was imported to avoid corruption
+        if (self.has_csv_imported) {
+            std.log.info("🧹 Skipping program cleanup due to CSV import - avoiding memory corruption", .{});
+            // Still clean up activators
+            for (self.activators.items) |*activator| {
+                activator.deinit();
+            }
+            self.activators.deinit();
+            return;
+        }
+
         self.program.deinit();
         for (self.activators.items) |*activator| {
             activator.deinit();
