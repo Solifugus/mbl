@@ -5,6 +5,26 @@ const Lexer = @import("lexer.zig");
 const TokenType = Lexer.TokenType;
 const Token = Lexer.Token;
 
+// Position information for error reporting
+pub const Position = struct {
+    line: usize,
+    column: usize,
+
+    pub fn fromToken(token: Token) Position {
+        return Position{
+            .line = token.line,
+            .column = token.column,
+        };
+    }
+
+    pub fn unknown() Position {
+        return Position{
+            .line = 0,
+            .column = 0,
+        };
+    }
+};
+
 // AST Node types
 pub const Statement = union(enum) {
     expression_stmt: ExpressionStatement,
@@ -66,6 +86,7 @@ pub const Expression = union(enum) {
 
 pub const ExpressionStatement = struct {
     expression: Expression,
+    position: Position,
 
     pub fn deinit(self: *ExpressionStatement, allocator: std.mem.Allocator) void {
         self.expression.deinit(allocator);
@@ -75,6 +96,7 @@ pub const ExpressionStatement = struct {
 pub const Assignment = struct {
     target: Expression,  // Left side (identifier, property access, etc.)
     value: Expression,   // Right side
+    position: Position,
 
     pub fn deinit(self: *Assignment, allocator: std.mem.Allocator) void {
         self.target.deinit(allocator);
@@ -303,6 +325,7 @@ pub const BinaryExpression = struct {
     left: *Expression,
     operator: BinaryOperator,
     right: *Expression,
+    position: Position,
 
     pub fn deinit(self: *BinaryExpression, allocator: std.mem.Allocator) void {
         self.left.deinit(allocator);
@@ -315,6 +338,7 @@ pub const BinaryExpression = struct {
 pub const UnaryExpression = struct {
     operator: UnaryOperator,
     operand: *Expression,
+    position: Position,
 
     pub fn deinit(self: *UnaryExpression, allocator: std.mem.Allocator) void {
         self.operand.deinit(allocator);
@@ -351,6 +375,7 @@ pub const UnaryOperator = enum {
 pub const CallExpression = struct {
     callee: *Expression,
     arguments: []Expression,
+    position: Position,
 
     pub fn deinit(self: *CallExpression, allocator: std.mem.Allocator) void {
         self.callee.deinit(allocator);
@@ -514,7 +539,11 @@ pub const Parser = struct {
             return try self.parseActivatorDeclaration();
         }
         if (self.match(.todo_kw)) {
-            return Statement{ .expression_stmt = ExpressionStatement{ .expression = Expression{ .literal = Literal{ .nothing = {} } } } };
+            const todo_token = self.previous();
+            return Statement{ .expression_stmt = ExpressionStatement{
+                .expression = Expression{ .literal = Literal{ .nothing = {} } },
+                .position = Position.fromToken(todo_token),
+            } };
         }
 
         // Assignment or expression statement
@@ -746,32 +775,45 @@ pub const Parser = struct {
         const target = self.parseAssignmentTarget() catch {
             // If parsing as assignment target fails, reset and parse as full expression
             self.current = saved_pos;
+            const start_token = self.peek();
             const expr = try self.parseExpression();
             self.consumeStatementEnd();
-            return Statement{ .expression_stmt = ExpressionStatement{ .expression = expr }};
+            return Statement{ .expression_stmt = ExpressionStatement{
+                .expression = expr,
+                .position = Position.fromToken(start_token),
+            }};
         };
 
         // Check if this is an assignment
         if (self.match(.assign)) {
+            const assign_token = self.previous();
             const value = try self.parseExpression();
             self.consumeStatementEnd();
 
             return Statement{ .assignment = Assignment{
                 .target = target,
                 .value = value,
+                .position = Position.fromToken(assign_token),
             }};
         } else {
             // Not an assignment - check if we have more tokens that need parsing (like method calls)
             if (self.check(.left_paren) or self.check(.left_bracket)) {
                 // We have more to parse, so reset and parse as full expression
                 self.current = saved_pos;
+                const start_token = self.peek();
                 const expr = try self.parseExpression();
                 self.consumeStatementEnd();
-                return Statement{ .expression_stmt = ExpressionStatement{ .expression = expr }};
+                return Statement{ .expression_stmt = ExpressionStatement{
+                    .expression = expr,
+                    .position = Position.fromToken(start_token),
+                }};
             } else {
                 // Simple identifier or property access, use what we have
                 self.consumeStatementEnd();
-                return Statement{ .expression_stmt = ExpressionStatement{ .expression = target }};
+                return Statement{ .expression_stmt = ExpressionStatement{
+                    .expression = target,
+                    .position = Position.fromToken(self.previous()),
+                }};
             }
         }
     }
@@ -875,6 +917,7 @@ pub const Parser = struct {
         var expr = try self.parseLogicalAnd();
 
         while (self.match(.or_kw)) {
+            const operator_token = self.previous();
             const operator = BinaryOperator.logical_or;
             const right = try self.parseLogicalAnd();
 
@@ -887,6 +930,7 @@ pub const Parser = struct {
                 .left = left_ptr,
                 .operator = operator,
                 .right = right_ptr,
+                .position = Position.fromToken(operator_token),
             }};
         }
 
@@ -909,6 +953,7 @@ pub const Parser = struct {
                 .left = left_ptr,
                 .operator = operator,
                 .right = right_ptr,
+                .position = Position.unknown(),
             }};
         }
 
@@ -936,6 +981,7 @@ pub const Parser = struct {
                 .left = left_ptr,
                 .operator = operator,
                 .right = right_ptr,
+                .position = Position.unknown(),
             }};
         }
 
@@ -965,6 +1011,7 @@ pub const Parser = struct {
                 .left = left_ptr,
                 .operator = operator,
                 .right = right_ptr,
+                .position = Position.unknown(),
             }};
         }
 
@@ -991,6 +1038,7 @@ pub const Parser = struct {
                 .left = left_ptr,
                 .operator = operator,
                 .right = right_ptr,
+                .position = Position.unknown(),
             }};
         }
 
@@ -1018,6 +1066,7 @@ pub const Parser = struct {
                 .left = left_ptr,
                 .operator = operator,
                 .right = right_ptr,
+                .position = Position.unknown(),
             }};
         }
 
@@ -1039,6 +1088,7 @@ pub const Parser = struct {
             return Expression{ .unary = UnaryExpression{
                 .operator = operator,
                 .operand = right_ptr,
+                .position = Position.unknown(),
             }};
         }
 
@@ -1108,6 +1158,7 @@ pub const Parser = struct {
         return Expression{ .call = CallExpression{
             .callee = callee_ptr,
             .arguments = try arguments.toOwnedSlice(),
+            .position = Position.unknown(),
         }};
     }
 

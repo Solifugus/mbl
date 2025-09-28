@@ -7,6 +7,136 @@ const MemoryError = error{
     InvalidInput,
 };
 
+// Error recording for v0.14.0 error handling system
+pub const ErrorRecord = struct {
+    message: Text,
+    line: Number,
+    column: Number,
+    context: Text,
+    operation: Text,
+    values: List,
+    allocator: std.mem.Allocator,
+
+    pub fn init(
+        allocator: std.mem.Allocator,
+        message: []const u8,
+        line: usize,
+        column: usize,
+        context: []const u8,
+        operation: []const u8,
+        values: []const []const u8,
+    ) !ErrorRecord {
+        var values_list = List.init(allocator);
+        for (values) |value| {
+            const value_text = try Text.init(allocator, value);
+            try values_list.append(MBLValue{ .text = value_text });
+        }
+
+        return ErrorRecord{
+            .message = try Text.init(allocator, message),
+            .line = Number.init(@as(f64, @floatFromInt(line))),
+            .column = Number.init(@as(f64, @floatFromInt(column))),
+            .context = try Text.init(allocator, context),
+            .operation = try Text.init(allocator, operation),
+            .values = values_list,
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *ErrorRecord) void {
+        self.message.deinit(self.allocator);
+        self.context.deinit(self.allocator);
+        self.operation.deinit(self.allocator);
+        self.values.deinit();
+    }
+
+    pub fn toRecord(self: ErrorRecord, allocator: std.mem.Allocator) !Record {
+        var record = Record.init(allocator);
+        try record.set("message", MBLValue{ .text = self.message });
+        try record.set("line", MBLValue{ .number = self.line });
+        try record.set("column", MBLValue{ .number = self.column });
+        try record.set("context", MBLValue{ .text = self.context });
+        try record.set("operation", MBLValue{ .text = self.operation });
+        try record.set("values", MBLValue{ .list = self.values });
+        return record;
+    }
+};
+
+// Error management system for program.errors
+pub const ErrorManager = struct {
+    errors: ?List,
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) ErrorManager {
+        return ErrorManager{
+            .errors = null,
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *ErrorManager) void {
+        if (self.errors) |*errors| {
+            errors.deinit();
+        }
+    }
+
+    pub fn hasErrors(self: *const ErrorManager) bool {
+        return self.errors != null;
+    }
+
+    pub fn getErrors(self: *ErrorManager) ?*List {
+        return if (self.errors) |*errors| errors else null;
+    }
+
+    pub fn recordError(
+        self: *ErrorManager,
+        message: []const u8,
+        line: usize,
+        column: usize,
+        context: []const u8,
+        operation: []const u8,
+        values: []const []const u8,
+    ) !void {
+        // Initialize errors list if not already initialized
+        if (self.errors == null) {
+            self.errors = List.init(self.allocator);
+        }
+
+        // Create error record and convert to MBL record
+        var error_record = try ErrorRecord.init(
+            self.allocator,
+            message,
+            line,
+            column,
+            context,
+            operation,
+            values,
+        );
+        const record = try error_record.toRecord(self.allocator);
+
+        // Clean up the temporary ErrorRecord (record has its own copies)
+        error_record.deinit();
+
+        // Add to errors list
+        try self.errors.?.append(MBLValue{ .record = record });
+    }
+
+    pub fn clear(self: *ErrorManager) void {
+        if (self.errors) |*errors| {
+            errors.deinit();
+        }
+        self.errors = null;
+    }
+
+    pub fn getErrorsAsMBLValue(self: *ErrorManager) MBLValue {
+        if (self.errors) |*errors| {
+            return MBLValue{ .list = errors.* };
+        } else {
+            return MBLValue{ .unknown = {} }; // Nothing equivalent
+        }
+    }
+};
+
 // Forward declarations to avoid circular imports
 pub const Statement = opaque {};
 pub const Expression = opaque {};

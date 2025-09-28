@@ -29,7 +29,7 @@
 15. [Scope and Context](#scope-and-context)
 16. [Comments and Documentation](#comments-and-documentation)
 17. [Standard Library](#standard-library) *(Planned)*
-18. [Error Handling](#error-handling) *(Planned)*
+18. [Error Handling](#error-handling)
 
 ---
 
@@ -920,23 +920,238 @@ json_string = json.stringify(data_object)
 
 ---
 
-## Error Handling *(Planned - v0.11.0)*
+## Error Handling *(v0.14.0)*
 
-### Try-Catch Blocks *(Planned)*
+MBL uses a business-friendly error handling approach that keeps programs running gracefully instead of crashing. When errors occur, they are collected in `program.errors` for review and handling.
+
+### Error Collection System
+
+Instead of traditional try-catch blocks, MBL collects errors in a centralized list accessible via `program.errors`:
+
 ```mbl
-try
-    result = risky_operation()
-    program.write("Success: " + result)
-catch error
-    program.write("Error occurred: " + error.message)
-end
+# Operations that might have errors
+result1 = 10 / 0           # Division by zero
+result2 = "abc".to_number() # Invalid conversion
+result3 = file.read()      # File might not exist
+
+# Check if any errors occurred
+if program.errors == Nothing:
+    program.write("All operations successful!")
+else:
+    program.write("Errors occurred:")
+    for error in program.errors:
+        program.write("- Line " + error.line + ": " + error.message)
 ```
 
-### Error Types *(Planned)*
-- `TypeError` - Type mismatch errors
-- `ValueError` - Invalid values (division by zero, etc.)
-- `FileError` - File operation errors
-- `NetworkError` - Network operation errors
+### Error Handling Philosophy
+
+**Key Principles:**
+- **Self-Healing Systems**: Use activators to automatically detect and correct errors
+- **Defect-Resistant Design**: Constrain operations to prevent errors before they occur
+- **No Program Crashes**: Operations that fail return `Unknown` instead of stopping execution
+- **Reactive Error Response**: Activators monitor `program.errors` and trigger automatic corrections
+- **Business Context**: Error messages use business-friendly language
+- **Robust Operation**: Systems do the right thing regardless of circumstances
+
+### Error Record Structure
+
+Each error in `program.errors` is a record with the following fields:
+
+```mbl
+# Example error record structure
+error = {
+    message: "Cannot divide by zero in budget calculation",
+    line: 42,
+    column: 15,
+    context: "calculate_budget function",
+    operation: "division",
+    values: ["1000", "0"]
+}
+```
+
+**Error Fields:**
+- `message`: Human-readable description of the error
+- `line`: Line number where error occurred (when available)
+- `column`: Column number where error occurred (when available)
+- `context`: Function or operation context
+- `operation`: Type of operation that failed
+- `values`: Input values that caused the error (for debugging)
+
+### Working with Errors
+
+**Checking for Errors:**
+```mbl
+# Simple error check
+if program.errors != Nothing:
+    program.error("Some operations failed")
+    # Handle errors appropriately
+```
+
+**Processing All Errors:**
+```mbl
+if program.errors != Nothing:
+    error_count = program.errors.len()
+    program.write("Found " + error_count + " errors:")
+
+    for error in program.errors:
+        program.write("Error at line " + error.line + ": " + error.message)
+```
+
+**Clearing Errors:**
+```mbl
+# Reset error collection after handling
+program.errors = Nothing
+```
+
+### Error Return Values
+
+When operations fail, they return the `Unknown` pseudo-type instead of valid results:
+
+```mbl
+# These operations return Unknown when they fail
+invalid_number = "abc".to_number()  # Returns Unknown
+division_result = 10 / 0            # Returns Unknown
+missing_file = program.import("nonexistent.csv")  # Returns Unknown
+
+# Unknown values can be checked
+if invalid_number == Unknown:
+    program.write("Number conversion failed")
+```
+
+### Common Error Scenarios
+
+**Type Conversion Errors:**
+```mbl
+text_value = "not a number"
+number_result = text_value.to_number()  # Returns Unknown
+# Error added to program.errors with conversion details
+```
+
+**Arithmetic Errors:**
+```mbl
+result = budget / 0  # Returns Unknown
+# Error: "Cannot divide by zero in arithmetic operation"
+```
+
+**File Operation Errors:**
+```mbl
+data = program.import("missing.csv")  # Returns Unknown
+# Error: "File 'missing.csv' not found or cannot be read"
+```
+
+**Database Errors:**
+```mbl
+result = program.odbc.run("INVALID SQL")  # Returns Unknown
+# Error: "SQL syntax error: unexpected token 'INVALID'"
+```
+
+### Self-Healing with Activators
+
+**Reactive Error Correction:**
+```mbl
+# Activator automatically detects and fixes division by zero
+anytime program.errors != Nothing:
+    for error in program.errors:
+        if error.operation == "division":
+            program.write("Auto-correcting division by zero...")
+            # Implement fallback calculation
+            if error.context == "budget_calculation":
+                budget_per_employee = total_budget / 1  # Safe fallback
+
+    program.errors = Nothing  # Clear after correction
+```
+
+**Constraint-Based Prevention:**
+```mbl
+# Prevent invalid operations before they occur
+anytime employee_count == 0:
+    program.write("Warning: No employees found, using minimum of 1")
+    employee_count = 1
+
+# Now division is always safe
+budget_per_employee = total_budget / employee_count
+```
+
+**Business Rule Enforcement:**
+```mbl
+# Automatically maintain data consistency
+anytime budget > company_limit:
+    program.write("Budget exceeded limit, applying automatic adjustment")
+    budget = company_limit
+    audit_log = audit_log + "Budget auto-corrected on " + @now()
+
+# System self-corrects when constraints are violated
+anytime inventory_level < minimum_stock:
+    program.write("Auto-reordering " + product_name)
+    place_reorder(product_code, reorder_quantity)
+    program.write("Emergency reorder placed automatically")
+```
+
+### Best Practices
+
+**1. Proactive Constraint Design:**
+```mbl
+# Define valid ranges and automatically enforce them
+anytime price < 0:
+    price = 0
+    program.write("Price corrected to minimum value")
+
+anytime quantity > max_inventory:
+    quantity = max_inventory
+    program.write("Quantity limited to maximum capacity")
+```
+
+**2. Cascading Self-Healing:**
+```mbl
+# Multiple activators work together for robust systems
+anytime connection_failed:
+    attempt_reconnection()
+
+anytime backup_needed and connection_active:
+    create_data_backup()
+
+anytime data_corrupted:
+    restore_from_backup()
+    program.write("Data automatically restored from backup")
+```
+
+**3. Defensive Programming:**
+```mbl
+# Systems that assume the worst and handle it gracefully
+calculate_metrics():
+    if customers.len() == 0:
+        return { message: "No customer data available", value: 0 }
+
+    if revenue == Unknown:
+        return { message: "Revenue data unavailable", value: 0 }
+
+    # Normal calculation only when data is valid
+    return { message: "Metrics calculated successfully", value: revenue / customers.len() }
+```
+
+### Error Types and Categories
+
+MBL automatically categorizes errors for better understanding:
+
+**Arithmetic Errors:**
+- Division by zero
+- Invalid number operations
+- Overflow/underflow conditions
+
+**Type Errors:**
+- Invalid type conversions
+- Incompatible operation types
+- Missing required fields
+
+**I/O Errors:**
+- File not found or permission denied
+- Network connection failures
+- Database connection or query errors
+
+**Business Logic Errors:**
+- Invalid business rule violations
+- Data validation failures
+- Constraint violations
 
 ---
 

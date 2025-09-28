@@ -107,6 +107,9 @@ pub const Interpreter = struct {
     current_loop_variable_name: ?[]const u8, // Name of current loop variable
     used_for_loop_with_records: bool, // Flag to track if for loops were used with record data
 
+    // Error management for v0.14.0
+    error_manager: memory.ErrorManager,
+
     // HTTP Server management
     http_server: ?std.net.StreamServer, // HTTP server instance
     server_thread: ?std.Thread, // Background server thread
@@ -136,6 +139,9 @@ pub const Interpreter = struct {
             .current_loop_variable_name = null,
             .used_for_loop_with_records = false,
 
+            // Error management
+            .error_manager = memory.ErrorManager.init(allocator),
+
             // HTTP Server fields
             .http_server = null,
             .server_thread = null,
@@ -160,6 +166,9 @@ pub const Interpreter = struct {
 
         // Clean up activators
         self.activators.deinit();
+
+        // Clean up error management
+        self.error_manager.deinit();
 
         // Clean up HTTP server
         if (self.http_server) |*server| {
@@ -430,6 +439,37 @@ pub const Interpreter = struct {
         std.log.info("🌐 Web namespace and HTTP client functions initialized", .{});
     }
 
+    // Setup program.errors for v0.14.0 error handling
+    fn setupProgramErrors(self: *Interpreter) !void {
+        // Initialize program.errors as Nothing (represented as Unknown)
+        try self.memory.program.set("errors", MBLValue{ .unknown = {} });
+        std.log.info("🛡️ Error handling system initialized - program.errors = Nothing", .{});
+    }
+
+    // Record an error and update program.errors
+    fn recordError(
+        self: *Interpreter,
+        message: []const u8,
+        line: usize,
+        column: usize,
+        context: []const u8,
+        operation: []const u8,
+        values: []const []const u8,
+    ) !void {
+        try self.error_manager.recordError(message, line, column, context, operation, values);
+
+        // Update program.errors to point to the error list
+        if (self.error_manager.getErrors()) |errors| {
+            try self.memory.program.set("errors", MBLValue{ .list = errors.* });
+        }
+    }
+
+    // Convenience method for recording simple errors without position info
+    fn recordSimpleError(self: *Interpreter, message: []const u8, operation: []const u8) !void {
+        const empty_values = [_][]const u8{};
+        try self.recordError(message, 0, 0, "unknown", operation, &empty_values);
+    }
+
     // Setup ODBC namespace and database functions
     fn setupOdbcNamespace(self: *Interpreter) !void {
         try odbc.registerOdbcFunctions(self);
@@ -442,6 +482,7 @@ pub const Interpreter = struct {
         // Setup built-in namespaces
         try self.setupWebNamespace();
         try self.setupOdbcNamespace();
+        try self.setupProgramErrors();
 
         // First pass: collect all labels
         for (statements, 0..) |stmt, i| {
@@ -1298,13 +1339,15 @@ pub const Interpreter = struct {
         // Read entire file
         const file = std.fs.cwd().openFile(path, .{}) catch |err| {
             const error_msg = try std.fmt.allocPrint(self.allocator, "Failed to open file '{s}': {}", .{ path, err });
-            return MBLValue{ .text = memory.Text{ .data = error_msg } };
+            try self.recordSimpleError(error_msg, "file_import");
+            return MBLValue{ .unknown = {} };
         };
         defer file.close();
 
         const file_contents = file.readToEndAlloc(self.allocator, 10 * 1024 * 1024) catch |err| { // 10MB limit
             const error_msg = try std.fmt.allocPrint(self.allocator, "Failed to read file '{s}': {}", .{ path, err });
-            return MBLValue{ .text = memory.Text{ .data = error_msg } };
+            try self.recordSimpleError(error_msg, "file_read");
+            return MBLValue{ .unknown = {} };
         };
 
         // Determine format
@@ -1428,7 +1471,8 @@ pub const Interpreter = struct {
                 error.OutOfMemory => "Out of memory parsing JSON",
                 else => "JSON parsing failed",
             };
-            return MBLValue{ .text = try memory.Text.init(self.allocator, error_msg) };
+            try self.recordSimpleError(error_msg, "json_parse");
+            return MBLValue{ .unknown = {} };
         };
         defer parsed.deinit();
 
@@ -1803,7 +1847,10 @@ pub const Interpreter = struct {
                     .number => |right_num| {
                         return MBLValue{ .number = memory.Number{ .value = left_num.value - right_num.value } };
                     },
-                    else => return error.TypeError,
+                    else => {
+                        try self.recordSimpleError("Invalid type for subtraction operation", "subtraction");
+                        return MBLValue{ .unknown = {} };
+                    },
                 }
             },
             .money => |left_money| {
@@ -1877,18 +1924,23 @@ pub const Interpreter = struct {
                 switch (right) {
                     .number => |right_num| {
                         if (right_num.value == 0) {
-                            return error.DivisionByZero;
+                            try self.recordSimpleError("Cannot divide by zero in arithmetic operation", "division");
+                            return MBLValue{ .unknown = {} };
                         }
                         return MBLValue{ .number = memory.Number{ .value = left_num.value / right_num.value } };
                     },
-                    else => return error.TypeError,
+                    else => {
+                        try self.recordSimpleError("Invalid type for division operation", "division");
+                        return MBLValue{ .unknown = {} };
+                    },
                 }
             },
             .money => |left_money| {
                 switch (right) {
                     .number => |right_num| {
                         if (right_num.value == 0) {
-                            return error.DivisionByZero;
+                            try self.recordSimpleError("Cannot divide money by zero", "division");
+                            return MBLValue{ .unknown = {} };
                         }
                         // Divide money by number -> money
                         const new_value = @as(i64, @intFromFloat(@as(f64, @floatFromInt(left_money.value)) / right_num.value));
@@ -1898,33 +1950,46 @@ pub const Interpreter = struct {
                     .money => |right_money| {
                         // Divide money by money -> number (ratio)
                         if (right_money.value == 0) {
-                            return error.DivisionByZero;
+                            try self.recordSimpleError("Cannot divide by zero money amount", "division");
+                            return MBLValue{ .unknown = {} };
                         }
                         const ratio = @as(f64, @floatFromInt(left_money.value)) / @as(f64, @floatFromInt(right_money.value));
                         return MBLValue{ .number = memory.Number{ .value = ratio } };
                     },
-                    else => return error.TypeError,
+                    else => {
+                        try self.recordSimpleError("Invalid type for money division", "division");
+                        return MBLValue{ .unknown = {} };
+                    },
                 }
             },
-            else => return error.TypeError,
+            else => {
+                try self.recordSimpleError("Invalid type for division operation", "division");
+                return MBLValue{ .unknown = {} };
+            },
         }
     }
 
     fn performModulo(self: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {
-        _ = self;
         switch (left) {
             .number => |left_num| {
                 switch (right) {
                     .number => |right_num| {
                         if (right_num.value == 0) {
-                            return error.DivisionByZero;
+                            try self.recordSimpleError("Cannot perform modulo with zero divisor", "modulo");
+                            return MBLValue{ .unknown = {} };
                         }
                         return MBLValue{ .number = memory.Number{ .value = @mod(left_num.value, right_num.value) } };
                     },
-                    else => return error.TypeError,
+                    else => {
+                        try self.recordSimpleError("Invalid type for modulo operation", "modulo");
+                        return MBLValue{ .unknown = {} };
+                    },
                 }
             },
-            else => return error.TypeError,
+            else => {
+                try self.recordSimpleError("Invalid type for modulo operation", "modulo");
+                return MBLValue{ .unknown = {} };
+            },
         }
     }
 
