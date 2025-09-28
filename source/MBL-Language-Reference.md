@@ -1,6 +1,14 @@
-# MBL Language Reference v0.12.1
+# MBL Language Reference v0.13.0
 
 **Modern Business Language (MBL)** - A programming language designed for business operations with minimal learning curve and maximum readability.
+
+## What's New in v0.13.0
+
+- **🗄️ Database Integration**: Complete ODBC database support with PostgreSQL connectivity
+- **📝 Business-Friendly SQL Interface**: Simple `program.odbc.run()` and `program.odbc.server()` functions
+- **🔧 Parameter Binding**: Full `{param}` syntax with Record and List parameter support
+- **📊 Multi-line Record Parsing**: Enhanced parser with indentation support for readable configuration
+- **🌐 Connection Management**: Automatic pooling, reconnection, and timeout handling
 
 ## Table of Contents
 
@@ -14,13 +22,14 @@
 8. [Activators and Reactive Programming](#activators-and-reactive-programming)
 9. [Text Methods and Symbol System](#text-methods-and-symbol-system)
 10. [File I/O and Data Processing](#file-io-and-data-processing)
-11. [Web Services and Network Programming](#web-services-and-network-programming)
-12. [Real-time Communication with MCP](#real-time-communication-with-mcp)
-13. [Built-in Operations](#built-in-operations)
-14. [Scope and Context](#scope-and-context)
-15. [Comments and Documentation](#comments-and-documentation)
-16. [Standard Library](#standard-library) *(Planned)*
-17. [Error Handling](#error-handling) *(Planned)*
+11. [Database Integration and SQL Operations](#database-integration-and-sql-operations)
+12. [Web Services and Network Programming](#web-services-and-network-programming)
+13. [Real-time Communication with MCP](#real-time-communication-with-mcp)
+14. [Built-in Operations](#built-in-operations)
+15. [Scope and Context](#scope-and-context)
+16. [Comments and Documentation](#comments-and-documentation)
+17. [Standard Library](#standard-library) *(Planned)*
+18. [Error Handling](#error-handling) *(Planned)*
 
 ---
 
@@ -180,20 +189,31 @@ start_time = @09:30:00
 - ISO 8601 format support
 
 ### Record (Object)
-Structured data containers:
+Structured data containers with full multi-line support:
 ```mbl
+# Single-line records
+employee = {name: "John Smith", age: 30, salary: $75000, active: true}
+
+# Multi-line records with indentation (v0.13.0+)
 employee = {
     name: "John Smith",
     age: 30,
     salary: $75000,
-    active: true
+    active: true,
+    address: {
+        street: "123 Main St",
+        city: "Springfield",
+        state: "IL"
+    }
 }
 ```
 
 **Features:**
 - Property access: `employee.name`
 - Dynamic property assignment: `employee.department = "Sales"`
+- Multi-line syntax with proper indentation support
 - Nested records supported
+- Mixed indentation styles supported
 - Iteration in for loops
 
 ### List (Array)
@@ -1067,6 +1087,163 @@ function_call := IDENTIFIER "(" argument_list? ")"
 record_literal := "{" (IDENTIFIER ":" expression ("," IDENTIFIER ":" expression)*)? "}"
 
 list_literal := "[" (expression ("," expression)*)? "]"
+```
+
+---
+
+## Database Integration and SQL Operations
+
+MBL v0.13.0 provides comprehensive database integration through the `program.odbc` namespace, enabling business-friendly SQL operations with automatic connection management and result mapping.
+
+### Database Server Configuration
+
+Configure database servers using the `program.odbc.server()` function with clear, readable record syntax:
+
+```mbl
+# PostgreSQL Configuration
+postgres_config = {
+    type: "postgresql",
+    host: "localhost",
+    port: 5432,
+    database: "business_db",
+    username: "app_user",
+    password: "secure_pass",
+    charset: "utf8mb4",
+    timeout: 30,
+    pool_size: 10
+}
+
+# Register the server
+program.odbc.server("primary", postgres_config)
+
+# Multiple database servers
+warehouse_config = {
+    type: "postgresql",
+    host: "warehouse.company.com",
+    port: 5432,
+    database: "analytics",
+    username: "analytics_user",
+    password: "warehouse_pass",
+    ssl_mode: "require",
+    pool_size: 50,
+    connection_timeout: 60
+}
+
+program.odbc.server("warehouse", warehouse_config)
+```
+
+### SQL Query Execution
+
+Execute SQL queries using the simple `program.odbc.run()` interface:
+
+```mbl
+# Basic SELECT query
+users = program.odbc.run("primary", "SELECT * FROM users")
+
+# Query with record parameters
+params = {
+    name: "Alice Johnson",
+    min_age: 25,
+    status: "active"
+}
+
+filtered_users = program.odbc.run("primary",
+    "SELECT * FROM users WHERE name = {name} AND age >= {min_age} AND status = {status}",
+    params)
+
+# Query with list parameters
+list_params = ["premium", 1000]
+premium_users = program.odbc.run("primary",
+    "SELECT * FROM users WHERE membership = {0} AND spending > {1}",
+    list_params)
+```
+
+### Data Modification Operations
+
+```mbl
+# UPDATE operations
+update_params = {user_id: 123, new_status: "premium"}
+update_result = program.odbc.run("primary",
+    "UPDATE users SET status = {new_status} WHERE id = {user_id}",
+    update_params)
+
+# INSERT operations
+new_user = {
+    name: "Bob Wilson",
+    email: "bob@company.com",
+    age: 28,
+    department: "Engineering"
+}
+
+insert_result = program.odbc.run("primary",
+    "INSERT INTO users (name, email, age, department) VALUES ({name}, {email}, {age}, {department})",
+    new_user)
+
+# DELETE operations
+program.odbc.run("primary", "DELETE FROM temp_users WHERE created_date < '2024-01-01'")
+```
+
+### Advanced Database Operations
+
+```mbl
+# Complex business queries with multiple parameters
+sales_params = {
+    start_date: "2024-01-01",
+    end_date: "2024-12-31",
+    region: "North America",
+    min_amount: 1000
+}
+
+sales_report = program.odbc.run("warehouse",
+    """SELECT
+         customer_name,
+         SUM(order_amount) as total_sales,
+         COUNT(*) as order_count
+       FROM sales_transactions
+       WHERE transaction_date BETWEEN {start_date} AND {end_date}
+         AND region = {region}
+         AND order_amount >= {min_amount}
+       GROUP BY customer_name
+       ORDER BY total_sales DESC""",
+    sales_params)
+
+# Cross-database operations
+customer_data = program.odbc.run("primary", "SELECT * FROM customers WHERE active = true")
+analytics_data = program.odbc.run("warehouse", "SELECT * FROM customer_analytics WHERE score > 0.8")
+```
+
+### Database Features
+
+#### Automatic Connection Management
+- **Connection Pooling**: Efficient connection reuse and management
+- **Reconnection Handling**: Automatic reconnection on connection failures
+- **Timeout Management**: Configurable connection and query timeouts
+
+#### Business-Friendly Parameter Binding
+- **Record Parameters**: `{field_name}` syntax with record values
+- **List Parameters**: `{0}`, `{1}` syntax with list values
+- **SQL Injection Prevention**: Automatic parameter escaping and validation
+- **Type Conversion**: Automatic MBL → SQL type conversion
+
+#### Native Result Mapping
+- **List of Records**: SELECT queries return `List` of `Record` objects
+- **Execution Results**: INSERT/UPDATE/DELETE return result metadata
+- **Type Preservation**: Automatic SQL → MBL type conversion
+- **Business Objects**: Direct integration with MBL business logic
+
+### Database Server Types
+
+MBL v0.13.0 supports PostgreSQL with extensible architecture for additional databases:
+
+```mbl
+# Currently supported
+postgresql_server = {type: "postgresql", ...}
+
+# Future database support architecture ready for:
+# mysql_server = {type: "mysql", ...}
+# sqlite_server = {type: "sqlite", ...}
+# sqlserver_server = {type: "sqlserver", ...}
+# oracle_server = {type: "oracle", ...}
 ```
 
 ---

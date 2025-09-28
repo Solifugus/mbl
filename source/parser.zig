@@ -1227,10 +1227,13 @@ pub const Parser = struct {
     fn parseRecordLiteral(self: *Parser) ParseError!Expression {
         var fields = std.ArrayList(RecordField).init(self.allocator);
 
+        // Skip any newlines and indentation after opening brace
+        while (self.match(.newline) or self.match(.indent)) {}
+
         if (!self.check(.right_brace)) {
             while (true) {
-                // Skip any newlines
-                while (self.match(.newline)) {}
+                // Skip any newlines and indentation
+                while (self.match(.newline) or self.match(.indent)) {}
 
                 // Key can be identifier or string
                 var key: Expression = undefined;
@@ -1245,6 +1248,10 @@ pub const Parser = struct {
                 }
 
                 _ = try self.consume(.colon, "Expected ':' after record key");
+
+                // Skip any newlines and indentation after colon
+                while (self.match(.newline) or self.match(.indent)) {}
+
                 const value = try self.parseExpression();
 
                 try fields.append(RecordField{
@@ -1254,13 +1261,13 @@ pub const Parser = struct {
 
                 if (!self.match(.comma)) break;
 
-                // Skip any newlines after comma
-                while (self.match(.newline)) {}
+                // Skip any newlines and indentation after comma
+                while (self.match(.newline) or self.match(.indent)) {}
             }
         }
 
-        // Skip any final newlines before closing brace
-        while (self.match(.newline)) {}
+        // Skip any final newlines and indentation before closing brace
+        while (self.match(.newline) or self.match(.indent)) {}
 
         _ = try self.consume(.right_brace, "Expected '}' after record fields");
 

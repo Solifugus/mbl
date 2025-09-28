@@ -2,6 +2,7 @@
 const std = @import("std");
 const memory = @import("memory.zig");
 const parser = @import("parser.zig");
+const odbc = @import("odbc.zig");
 
 const Memory = memory.Memory;
 const MBLValue = memory.MBLValue;
@@ -429,11 +430,18 @@ pub const Interpreter = struct {
         std.log.info("🌐 Web namespace and HTTP client functions initialized", .{});
     }
 
+    // Setup ODBC namespace and database functions
+    fn setupOdbcNamespace(self: *Interpreter) !void {
+        try odbc.registerOdbcFunctions(self);
+        std.log.info("🗄️ ODBC database functions initialized", .{});
+    }
+
     pub fn execute(self: *Interpreter, statements: []Statement) !void {
         self.log("🔥 Executing {} MBL statements...", .{statements.len});
 
         // Setup built-in namespaces
         try self.setupWebNamespace();
+        try self.setupOdbcNamespace();
 
         // First pass: collect all labels
         for (statements, 0..) |stmt, i| {
