@@ -327,7 +327,7 @@ pub const Lexer = struct {
     }
 
     fn scanComment(self: *Lexer) LexError!?Token {
-        // Count initial # symbols
+        // Count initial # symbols (we already consumed the first one)
         var hash_count: usize = 1;
         while (self.peek() == '#') {
             hash_count += 1;
@@ -335,82 +335,37 @@ pub const Lexer = struct {
         }
 
         if (hash_count == 1) {
-            // Single-line comment - continues to newline OR ends with closing #
-            // Look for immediate closing # (like "##") vs # later in line (like "# text # more")
-            const immediate_close = self.peek() == '#';
-            if (immediate_close) {
-                // Handle "##" case - consume the closing #
-                _ = self.advance();
-            } else {
-                // Handle "# comment..." case - go until newline or find closing #
-                while (self.peek() != '\n' and !self.isAtEnd()) {
-                    if (self.peek() == '#') {
-                        // Check if this should terminate the comment
-                        // For single hash, a standalone # terminates the comment
-                        const next_pos = self.current + 1;
-                        if (next_pos >= self.source.len or
-                            self.source[next_pos] == ' ' or
-                            self.source[next_pos] == '\t' or
-                            self.source[next_pos] == '\n') {
-                            // This # is followed by whitespace/end, so it terminates
-                            _ = self.advance();
-                            break;
-                        }
-                    }
+            // Single # comment: ends at next # or end of line
+            while (self.peek() != '\n' and !self.isAtEnd()) {
+                if (self.peek() == '#') {
+                    // Found closing #, consume it and end comment
                     _ = self.advance();
+                    break;
                 }
+                _ = self.advance();
             }
         } else {
-            // Multi-line comment - look for matching number of consecutive #
-            // Track if we've seen a newline to distinguish single-line vs multi-line
-            var seen_newline = false;
-
+            // Multiple # comment: ends at same number of consecutive # or end of file
             while (!self.isAtEnd()) {
                 const c = self.advance();
-                if (c == '#') {
-                    // For multi-line comments, closing # must be at start of line
-                    // For single-line comments, closing # can be anywhere
-                    var is_valid_closing_position = false;
-                    if (seen_newline) {
-                        // Multi-line mode: # must be at start of line
-                        if (self.current > 1) {
-                            const prev_char = self.source[self.current - 2];
-                            is_valid_closing_position = (prev_char == '\n' or prev_char == '\r');
-                        } else {
-                            is_valid_closing_position = true; // Very beginning of input
-                        }
-                    } else {
-                        // Single-line mode: # can be anywhere
-                        is_valid_closing_position = true;
-                    }
-
-                    if (is_valid_closing_position) {
-                        // Count consecutive # characters starting from current position
-                        var consecutive_hashes: usize = 1; // We already found one
-
-                        // Look ahead for more consecutive hashes
-                        while (!self.isAtEnd() and self.peek() == '#') {
-                            consecutive_hashes += 1;
-                            _ = self.advance();
-                        }
-
-                        // If we found the matching number of hashes, we're done
-                        if (consecutive_hashes == hash_count) {
-                            // For multi-line comments ending with ### End..., consume the rest of line
-                            if (seen_newline and !self.isAtEnd() and self.peek() != '\n' and self.peek() != '\r') {
-                                // Consume the rest of the line (like "End multi-line comment")
-                                while (!self.isAtEnd() and self.peek() != '\n' and self.peek() != '\r') {
-                                    _ = self.advance();
-                                }
-                            }
-                            break;
-                        }
-                    }
-                    // Otherwise continue scanning (the hashes we consumed are part of comment content)
-                } else if (c == '\n') {
-                    seen_newline = true;
+                if (c == '\n') {
                     self.line += 1;
                     self.column = 1;
+                } else if (c == '#') {
+                    // Found a #, check if we have the right number of consecutive #
+                    var consecutive_hashes: usize = 1;
+
+                    // Count consecutive # characters
+                    while (!self.isAtEnd() and self.peek() == '#') {
+                        consecutive_hashes += 1;
+                        _ = self.advance();
+                    }
+
+                    // If we found matching number of hashes, end comment
+                    if (consecutive_hashes == hash_count) {
+                        break;
+                    }
+                    // Otherwise, the hashes we consumed are part of comment content
                 }
             }
         }

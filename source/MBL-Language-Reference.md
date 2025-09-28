@@ -860,22 +860,104 @@ end
 ## Comments and Documentation
 
 ### Single-line Comments
+
+**Basic Comments:**
 ```mbl
 # This is a comment
 company = "Acme"    # End-of-line comment
 ```
 
+**Hash-terminated Comments:**
+```mbl
+# Comment with explicit end # Regular code continues
+price = 100  # Inline comment #  calculation = price * 0.1
+```
+
+### Multi-line Comments *(v0.14.0)*
+
+**Double Hash Comments:**
+```mbl
+## Multi-line comment
+This spans multiple lines
+and can contain # single hashes
+program.write("This code is commented out")
+##
+
+program.write("This code executes")
+```
+
+**Triple Hash Comments:**
+```mbl
+### Longer documentation comment
+This is useful for detailed explanations
+that might contain ## double hashes
+or # single hashes within the text.
+
+Perfect for commenting out blocks of code
+that already contain other comments.
+###
+```
+
+**Arbitrary Length Comments:**
+```mbl
+#### Four hash comment
+##### Five hash comment
+###### Six hash comment
+```
+
+### Nested Comment Capability
+
+The multi-hash system allows commenting out code that contains other comments:
+
+```mbl
+### Comment out this entire block
+# This single line comment # is ignored
+program.write("Debug message")
+
+## This double comment is also ignored ##
+calculate_budget()
+###
+
+# This comment is active again
+```
+
 ### Documentation Comments
 ```mbl
-# Calculate quarterly budget allocation
-# Input: annual_budget (Money) - Total yearly budget
-# Output: Money - Budget per quarter
+### Calculate quarterly budget allocation
+Input: annual_budget (Money) - Total yearly budget
+Output: Money - Budget per quarter
+
+This function handles currency conversion and
+ensures proper # allocation across quarters.
+###
 function quarterly_allocation(annual_budget)
     return annual_budget / 4
 end
 ```
 
-*Multi-line comment blocks (`### ... ###`) planned for v0.11.0*
+### Best Practices
+
+**1. Use single `#` for simple comments:**
+```mbl
+# Calculate tax
+tax = income * 0.25
+```
+
+**2. Use `##` for temporary code blocks:**
+```mbl
+## Temporarily disabled feature
+process_advanced_analytics()
+send_notifications()
+##
+```
+
+**3. Use `###` or higher for documentation:**
+```mbl
+### Business Logic Documentation
+This section handles customer payment processing
+with automatic error recovery and audit logging.
+###
+```
 
 ---
 
