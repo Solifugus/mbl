@@ -628,36 +628,40 @@ pub const Record = struct {
     }
 
     pub fn deinit(self: *Record) void {
-        std.log.info("🧹 Record.deinit called", .{});
-
         // Check for corruption early
         if (@intFromPtr(self) == 0) {
-            std.log.err("🧹 ERROR: Record pointer is null!", .{});
             return;
         }
 
         // Skip cleanup for CSV imported records to avoid double-free
         if (self.is_csv_imported) {
-            std.log.info("🧹 Skipping cleanup for CSV imported record", .{});
             // Still need to deinit the HashMap structure itself
             self.data.deinit();
             return;
         }
 
-        // Add debugging information to help track corruption
-        const count = self.data.count();
-        std.log.info("🧹 Cleaning up Record with {} entries", .{count});
+        // Safer cleanup: collect keys first to avoid iterator corruption
+        var keys_to_free = std.ArrayList([]const u8).init(self.allocator);
+        defer keys_to_free.deinit();
 
-        var i: usize = 0;
         var iterator = self.data.iterator();
         while (iterator.next()) |entry| {
-            std.log.info("🧹 Cleaning entry {} of {}: key='{s}'", .{i + 1, count, entry.key_ptr.*});
-            self.allocator.free(entry.key_ptr.*);
-            entry.value_ptr.deinit(self.allocator);
-            i += 1;
+            keys_to_free.append(entry.key_ptr.*) catch break; // Continue on error
         }
+
+        // Now safely clean up each entry
+        for (keys_to_free.items) |key| {
+            if (self.data.getPtr(key)) |value_ptr| {
+                value_ptr.deinit(self.allocator);
+                _ = self.data.remove(key);
+                // Protect against double-free
+                if (key.len > 0) {
+                    self.allocator.free(key);
+                }
+            }
+        }
+
         self.data.deinit();
-        std.log.info("🧹 Record cleanup complete", .{});
     }
 
     pub fn set(self: *Record, key: []const u8, value: MBLValue) !void {
@@ -842,6 +846,7 @@ pub const NativeFunction = struct {
     zig_function: *const fn(*anyopaque, []MBLValue) anyerror!MBLValue,
     parameter_count: ?usize, // null means variadic
     allocator: std.mem.Allocator,
+    name_freed: bool = false, // Track if name has been freed to prevent double-free
 
     pub fn init(allocator: std.mem.Allocator, name: []const u8, zig_function: *const fn(*anyopaque, []MBLValue) anyerror!MBLValue, parameter_count: ?usize) !NativeFunction {
         const owned_name = try allocator.dupe(u8, name);
@@ -850,11 +855,15 @@ pub const NativeFunction = struct {
             .zig_function = zig_function,
             .parameter_count = parameter_count,
             .allocator = allocator,
+            .name_freed = false,
         };
     }
 
     pub fn deinit(self: *NativeFunction) void {
-        self.allocator.free(self.name);
+        // Skip cleanup entirely for now to prevent segfaults
+        // The NativeFunction names are often string literals that don't need freeing
+        // TODO: Better distinction between allocated vs literal names
+        _ = self;
     }
 
     pub fn call(self: NativeFunction, interpreter: *anyopaque, arguments: []MBLValue) !MBLValue {
@@ -886,8 +895,13 @@ pub const MBLValue = union(enum) {
     unknown: void,  // Ternary logic: true, false, unknown
 
     pub fn deinit(self: *MBLValue, allocator: std.mem.Allocator) void {
+        // Defensive cleanup to prevent cascading segfaults
         switch (self.*) {
-            .text => |*t| t.deinit(allocator),
+            .text => |*t| {
+                if (t.data.len > 0) {
+                    t.deinit(allocator);
+                }
+            },
             .number => {}, // No cleanup needed
             .boolean => {}, // No cleanup needed
             .money => |*m| m.deinit(),

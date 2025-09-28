@@ -1459,10 +1459,16 @@ pub const Parser = struct {
     fn countIndentation(self: *Parser) usize {
         var pos = self.current;
 
-        // If there's an indent token, return the number of spaces divided by 4
+        // If there's an indent token, return the indentation level
         if (pos < self.tokens.len and self.tokens[pos].type == .indent) {
             const indent_lexeme = self.tokens[pos].lexeme;
-            return indent_lexeme.len / 4; // Each indent level is 4 spaces
+            // For tabs: each tab character is one indentation level
+            // For spaces: every 4 spaces is one indentation level
+            if (indent_lexeme.len > 0 and indent_lexeme[0] == '\t') {
+                return indent_lexeme.len; // Each tab = 1 indent level
+            } else {
+                return indent_lexeme.len / 4; // Each 4 spaces = 1 indent level
+            }
         }
 
         return 0;

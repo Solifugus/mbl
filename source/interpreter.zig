@@ -470,6 +470,34 @@ pub const Interpreter = struct {
         try self.recordError(message, 0, 0, "unknown", operation, &empty_values);
     }
 
+    // Helper function to attempt text-to-number conversion for arithmetic operations
+    fn tryTextToNumber(_: *Interpreter, value: MBLValue) ?memory.Number {
+        switch (value) {
+            .number => |num| return num,
+            .text => |text| {
+                // Trim whitespace before parsing
+                const trimmed = std.mem.trim(u8, text.data, " \t\n\r");
+                if (trimmed.len == 0) return memory.Number{ .value = 0.0 }; // Empty = 0
+
+                // Try to parse the text as a number
+                if (std.fmt.parseFloat(f64, trimmed)) |parsed_value| {
+                    return memory.Number{ .value = parsed_value };
+                } else |_| {
+                    // If parsing fails, return null
+                    return null;
+                }
+            },
+            .boolean => |b| return memory.Number{ .value = if (b.value) 1.0 else 0.0 },
+            else => return null,
+        }
+    }
+
+    // Helper function to convert any value to text for concatenation
+    fn tryValueToText(self: *Interpreter, value: MBLValue) !memory.Text {
+        const text_value = try value.convertToText(self.allocator);
+        return text_value.text;
+    }
+
     // Setup ODBC namespace and database functions
     fn setupOdbcNamespace(self: *Interpreter) !void {
         try odbc.registerOdbcFunctions(self);
@@ -484,11 +512,14 @@ pub const Interpreter = struct {
         try self.setupOdbcNamespace();
         try self.setupProgramErrors();
 
-        // First pass: collect all labels
+        // First pass: collect all labels and functions (hoisting)
         for (statements, 0..) |stmt, i| {
             if (stmt == .label) {
                 try self.labels.put(stmt.label.name, i);
                 std.log.info("📍 Found label '{s}' at statement {}", .{stmt.label.name, i});
+            } else if (stmt == .function_declaration) {
+                try self.registerFunction(stmt.function_declaration);
+                std.log.info("🚀 Hoisted function '{s}' (defined at statement {})", .{stmt.function_declaration.name, i});
             }
         }
 
@@ -579,8 +610,9 @@ pub const Interpreter = struct {
                 std.log.info("🔄 GOTO '{s}' executed from nested statement", .{goto_stmt.target});
                 return InterpreterError.GotoExecuted;
             },
-            .function_declaration => |func_decl| {
-                try self.registerFunction(func_decl);
+            .function_declaration => |_| {
+                // Function already registered during hoisting pass, skip execution
+                std.log.info("⏭️  Skipping function declaration (already hoisted)", .{});
             },
             .return_statement => |return_stmt| {
                 try self.executeReturnStatement(return_stmt);
@@ -1728,67 +1760,68 @@ pub const Interpreter = struct {
     }
 
     fn performAddition(self: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {
-        // Addition rules:
-        // number + string -> try convert string to number, else concatenate
-        // string + anything -> concatenate (convert right to string)
-        // number + number -> add
-        // money + money -> add (same currency)
-        // unknown + anything -> unknown
+        // Enhanced Addition Rules:
+        // 1. Text + Anything = Text Concatenation (e.g., "5" + 5 = "55")
+        // 2. Number + Text = Try Numeric Addition, Fall Back to Concatenation (e.g., 5 + "5" = 10)
+        // 3. Same Type Operations preserve type semantics
+        // 4. Unknown propagates
 
         if (left == .unknown or right == .unknown) {
             return MBLValue{ .unknown = {} };
         }
 
         switch (left) {
+            .text => {
+                // Rule 1: Text + Anything = Text Concatenation
+                const left_text = try self.tryValueToText(left);
+                const right_text = try self.tryValueToText(right);
+                const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.data, right_text.data });
+                return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
+            },
             .number => |left_num| {
                 switch (right) {
                     .number => |right_num| {
+                        // Number + Number = Numeric Addition
                         return MBLValue{ .number = memory.Number{ .value = left_num.value + right_num.value } };
                     },
-                    .text => |right_text| {
-                        // Try to convert text to number for arithmetic, else concatenate
-                        if (right_text.data.len == 0) {
-                            // Empty string (Nothing) -> 0
-                            return MBLValue{ .number = memory.Number{ .value = left_num.value + 0.0 } };
-                        }
-                        if (std.fmt.parseFloat(f64, right_text.data)) |num_val| {
-                            return MBLValue{ .number = memory.Number{ .value = left_num.value + num_val } };
-                        } else |_| {
-                            // Can't parse as number, concatenate
-                            const left_str = try std.fmt.allocPrint(self.allocator, "{d}", .{left_num.value});
-                            const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_str, right_text.data });
-                            defer self.allocator.free(left_str);
+                    .text => {
+                        // Rule 2: Number + Text = Try Numeric Addition, Fall Back to Concatenation
+                        if (self.tryTextToNumber(right)) |right_num| {
+                            return MBLValue{ .number = memory.Number{ .value = left_num.value + right_num.value } };
+                        } else {
+                            // Can't convert text to number, fall back to concatenation
+                            const left_text = try self.tryValueToText(left);
+                            const right_text = try self.tryValueToText(right);
+                            const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.data, right_text.data });
                             return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
                         }
                     },
                     else => {
-                        // Convert right to text and concatenate
-                        const left_text = try left.convertToText(self.allocator);
-                        const right_text = try right.convertToText(self.allocator);
-                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.text.data, right_text.text.data });
-                        return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
+                        // Try to convert right operand to number, otherwise concatenate
+                        if (self.tryTextToNumber(right)) |right_num| {
+                            return MBLValue{ .number = memory.Number{ .value = left_num.value + right_num.value } };
+                        } else {
+                            const left_text = try self.tryValueToText(left);
+                            const right_text = try self.tryValueToText(right);
+                            const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.data, right_text.data });
+                            return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
+                        }
                     },
                 }
-            },
-            .text => |left_text| {
-                // String concatenation: convert everything to text
-                const right_text = try right.convertToText(self.allocator);
-                const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.data, right_text.text.data });
-                return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
             },
             .money => |left_money| {
                 switch (right) {
                     .money => |right_money| {
-                        // Money addition (assuming same currency)
+                        // Money + Money = Money Addition (same currency logic)
                         const result_value = left_money.value + right_money.value;
                         const result_money = try memory.Money.init(self.allocator, result_value, left_money.currency, left_money.currency, 1.0);
                         return MBLValue{ .money = result_money };
                     },
                     else => {
-                        // Convert to text and concatenate
-                        const left_text = try left.convertToText(self.allocator);
-                        const right_text = try right.convertToText(self.allocator);
-                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.text.data, right_text.text.data });
+                        // Money + Other = Text Concatenation
+                        const left_text = try self.tryValueToText(left);
+                        const right_text = try self.tryValueToText(right);
+                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.data, right_text.data });
                         return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
                     },
                 }
@@ -1796,20 +1829,20 @@ pub const Interpreter = struct {
             .time => |left_time| {
                 switch (right) {
                     .time => |right_time| {
-                        // Time arithmetic: time + time (duration)
+                        // Time + Time = Time arithmetic
                         const result_time = left_time.add(right_time);
                         return MBLValue{ .time = result_time };
                     },
                     .duration => |right_duration| {
-                        // Time + duration = time
+                        // Time + Duration = Time arithmetic
                         const result_time = left_time.addDuration(right_duration);
                         return MBLValue{ .time = result_time };
                     },
                     else => {
-                        // Convert to text and concatenate
-                        const left_text = try left.convertToText(self.allocator);
-                        const right_text = try right.convertToText(self.allocator);
-                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.text.data, right_text.text.data });
+                        // Time + Other = Text Concatenation
+                        const left_text = try self.tryValueToText(left);
+                        const right_text = try self.tryValueToText(right);
+                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.data, right_text.data });
                         return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
                     },
                 }
@@ -1817,35 +1850,44 @@ pub const Interpreter = struct {
             .duration => |left_duration| {
                 switch (right) {
                     .duration => |right_duration| {
-                        // Duration arithmetic: duration + duration
+                        // Duration + Duration = Duration arithmetic
                         const result_duration = left_duration.add(right_duration);
                         return MBLValue{ .duration = result_duration };
                     },
                     else => {
-                        // Convert to text and concatenate
-                        const left_text = try left.convertToText(self.allocator);
-                        const right_text = try right.convertToText(self.allocator);
-                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.text.data, right_text.text.data });
+                        // Duration + Other = Text Concatenation
+                        const left_text = try self.tryValueToText(left);
+                        const right_text = try self.tryValueToText(right);
+                        const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.data, right_text.data });
                         return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
                     },
                 }
             },
             else => {
-                // Convert everything to text and concatenate
-                const left_text = try left.convertToText(self.allocator);
-                const right_text = try right.convertToText(self.allocator);
-                const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.text.data, right_text.text.data });
+                // Default: Convert everything to text and concatenate
+                const left_text = try self.tryValueToText(left);
+                const right_text = try self.tryValueToText(right);
+                const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.data, right_text.data });
                 return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
             },
         }
     }
 
     fn performSubtraction(self: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {
+        // Try to convert both operands to numbers
+        const left_num = self.tryTextToNumber(left);
+        const right_num = self.tryTextToNumber(right);
+
+        if (left_num != null and right_num != null) {
+            return MBLValue{ .number = memory.Number{ .value = left_num.?.value - right_num.?.value } };
+        }
+
+        // If automatic conversion fails, fall back to original type-specific logic
         switch (left) {
-            .number => |left_num| {
+            .number => |left_num_val| {
                 switch (right) {
-                    .number => |right_num| {
-                        return MBLValue{ .number = memory.Number{ .value = left_num.value - right_num.value } };
+                    .number => |right_num_val| {
+                        return MBLValue{ .number = memory.Number{ .value = left_num_val.value - right_num_val.value } };
                     },
                     else => {
                         try self.recordSimpleError("Invalid type for subtraction operation", "subtraction");
@@ -1888,65 +1930,94 @@ pub const Interpreter = struct {
     }
 
     fn performMultiplication(self: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {
+        // Enhanced Multiplication Rules:
+        // Try to convert both operands to numbers for arithmetic operations
+        // Special handling for Money * Number and Number * Money
+
+        if (left == .unknown or right == .unknown) {
+            return MBLValue{ .unknown = {} };
+        }
+
+        // Try automatic number conversions first
+        const left_num = self.tryTextToNumber(left);
+        const right_num = self.tryTextToNumber(right);
+
+        if (left_num != null and right_num != null) {
+            return MBLValue{ .number = memory.Number{ .value = left_num.?.value * right_num.?.value } };
+        }
+
+        // Handle specific type combinations
         switch (left) {
-            .number => |left_num| {
+            .number => |left_num_val| {
                 switch (right) {
-                    .number => |right_num| {
-                        return MBLValue{ .number = memory.Number{ .value = left_num.value * right_num.value } };
-                    },
                     .money => |right_money| {
                         // Number * Money -> Money
-                        const new_value = @as(i64, @intFromFloat(left_num.value * @as(f64, @floatFromInt(right_money.value))));
+                        const new_value = @as(i64, @intFromFloat(left_num_val.value * @as(f64, @floatFromInt(right_money.value))));
                         const result_money = try memory.Money.init(self.allocator, new_value, right_money.currency, right_money.base, right_money.conversion);
                         return MBLValue{ .money = result_money };
                     },
-                    else => return error.TypeError,
-                }
-            },
-            .money => |left_money| {
-                switch (right) {
-                    .number => |right_num| {
-                        // Money * Number -> Money
-                        const new_value = @as(i64, @intFromFloat(@as(f64, @floatFromInt(left_money.value)) * right_num.value));
-                        const result_money = try memory.Money.init(self.allocator, new_value, left_money.currency, left_money.base, left_money.conversion);
-                        return MBLValue{ .money = result_money };
-                    },
-                    else => return error.TypeError,
-                }
-            },
-            else => return error.TypeError,
-        }
-    }
-
-    fn performDivision(self: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {
-        switch (left) {
-            .number => |left_num| {
-                switch (right) {
-                    .number => |right_num| {
-                        if (right_num.value == 0) {
-                            try self.recordSimpleError("Cannot divide by zero in arithmetic operation", "division");
-                            return MBLValue{ .unknown = {} };
-                        }
-                        return MBLValue{ .number = memory.Number{ .value = left_num.value / right_num.value } };
-                    },
                     else => {
-                        try self.recordSimpleError("Invalid type for division operation", "division");
+                        try self.recordSimpleError("Invalid type for multiplication operation", "multiplication");
                         return MBLValue{ .unknown = {} };
                     },
                 }
             },
             .money => |left_money| {
+                // Try to convert right operand to number for Money * Number
+                if (self.tryTextToNumber(right)) |right_num_val| {
+                    const new_value = @as(i64, @intFromFloat(@as(f64, @floatFromInt(left_money.value)) * right_num_val.value));
+                    const result_money = try memory.Money.init(self.allocator, new_value, left_money.currency, left_money.base, left_money.conversion);
+                    return MBLValue{ .money = result_money };
+                } else {
+                    try self.recordSimpleError("Invalid type for multiplication operation", "multiplication");
+                    return MBLValue{ .unknown = {} };
+                }
+            },
+            else => {
+                try self.recordSimpleError("Invalid type for multiplication operation", "multiplication");
+                return MBLValue{ .unknown = {} };
+            },
+        }
+    }
+
+    fn performDivision(self: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {
+        // Enhanced Division Rules:
+        // Try to convert both operands to numbers for arithmetic operations
+        // Special handling for Money / Number and Money / Money
+
+        if (left == .unknown or right == .unknown) {
+            return MBLValue{ .unknown = {} };
+        }
+
+        // Try automatic number conversions first
+        const left_num = self.tryTextToNumber(left);
+        const right_num = self.tryTextToNumber(right);
+
+        if (left_num != null and right_num != null) {
+            if (right_num.?.value == 0) {
+                try self.recordSimpleError("Cannot divide by zero in arithmetic operation", "division");
+                return MBLValue{ .unknown = {} };
+            }
+            return MBLValue{ .number = memory.Number{ .value = left_num.?.value / right_num.?.value } };
+        }
+
+        // Handle specific type combinations
+        switch (left) {
+            .number => |left_num_val| {
+                // Try to convert right operand to number
+                if (self.tryTextToNumber(right)) |right_num_val| {
+                    if (right_num_val.value == 0) {
+                        try self.recordSimpleError("Cannot divide by zero in arithmetic operation", "division");
+                        return MBLValue{ .unknown = {} };
+                    }
+                    return MBLValue{ .number = memory.Number{ .value = left_num_val.value / right_num_val.value } };
+                } else {
+                    try self.recordSimpleError("Invalid type for division operation", "division");
+                    return MBLValue{ .unknown = {} };
+                }
+            },
+            .money => |left_money| {
                 switch (right) {
-                    .number => |right_num| {
-                        if (right_num.value == 0) {
-                            try self.recordSimpleError("Cannot divide money by zero", "division");
-                            return MBLValue{ .unknown = {} };
-                        }
-                        // Divide money by number -> money
-                        const new_value = @as(i64, @intFromFloat(@as(f64, @floatFromInt(left_money.value)) / right_num.value));
-                        const result_money = try memory.Money.init(self.allocator, new_value, left_money.currency, left_money.base, left_money.conversion);
-                        return MBLValue{ .money = result_money };
-                    },
                     .money => |right_money| {
                         // Divide money by money -> number (ratio)
                         if (right_money.value == 0) {
@@ -1957,8 +2028,20 @@ pub const Interpreter = struct {
                         return MBLValue{ .number = memory.Number{ .value = ratio } };
                     },
                     else => {
-                        try self.recordSimpleError("Invalid type for money division", "division");
-                        return MBLValue{ .unknown = {} };
+                        // Try to convert right operand to number for Money / Number
+                        if (self.tryTextToNumber(right)) |right_num_val| {
+                            if (right_num_val.value == 0) {
+                                try self.recordSimpleError("Cannot divide money by zero", "division");
+                                return MBLValue{ .unknown = {} };
+                            }
+                            // Divide money by number -> money
+                            const new_value = @as(i64, @intFromFloat(@as(f64, @floatFromInt(left_money.value)) / right_num_val.value));
+                            const result_money = try memory.Money.init(self.allocator, new_value, left_money.currency, left_money.base, left_money.conversion);
+                            return MBLValue{ .money = result_money };
+                        } else {
+                            try self.recordSimpleError("Invalid type for money division", "division");
+                            return MBLValue{ .unknown = {} };
+                        }
                     },
                 }
             },
@@ -1970,27 +2053,27 @@ pub const Interpreter = struct {
     }
 
     fn performModulo(self: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {
-        switch (left) {
-            .number => |left_num| {
-                switch (right) {
-                    .number => |right_num| {
-                        if (right_num.value == 0) {
-                            try self.recordSimpleError("Cannot perform modulo with zero divisor", "modulo");
-                            return MBLValue{ .unknown = {} };
-                        }
-                        return MBLValue{ .number = memory.Number{ .value = @mod(left_num.value, right_num.value) } };
-                    },
-                    else => {
-                        try self.recordSimpleError("Invalid type for modulo operation", "modulo");
-                        return MBLValue{ .unknown = {} };
-                    },
-                }
-            },
-            else => {
-                try self.recordSimpleError("Invalid type for modulo operation", "modulo");
-                return MBLValue{ .unknown = {} };
-            },
+        // Enhanced Modulo Rules:
+        // Try to convert both operands to numbers for arithmetic operations
+
+        if (left == .unknown or right == .unknown) {
+            return MBLValue{ .unknown = {} };
         }
+
+        // Try automatic number conversions
+        const left_num = self.tryTextToNumber(left);
+        const right_num = self.tryTextToNumber(right);
+
+        if (left_num != null and right_num != null) {
+            if (right_num.?.value == 0) {
+                try self.recordSimpleError("Cannot perform modulo with zero divisor", "modulo");
+                return MBLValue{ .unknown = {} };
+            }
+            return MBLValue{ .number = memory.Number{ .value = @mod(left_num.?.value, right_num.?.value) } };
+        }
+
+        try self.recordSimpleError("Invalid types for modulo operation", "modulo");
+        return MBLValue{ .unknown = {} };
     }
 
     fn performEquality(self: *Interpreter, left: MBLValue, right: MBLValue) anyerror!MBLValue {

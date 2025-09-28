@@ -19,6 +19,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // TODO: HTTP server functionality implemented using std.net
+    // External httpz dependency not needed for basic HTTP server
+
     // Install the executable to zig-out/bin/
     b.installArtifact(exe);
 

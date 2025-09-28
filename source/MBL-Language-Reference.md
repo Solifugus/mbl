@@ -507,6 +507,52 @@ employee_tax = calculate_tax(75000, 0.25)
 program.write("Tax owed: " + employee_tax)
 ```
 
+### Function Hoisting *(v0.14.0)*
+
+**Functions can be called before they are defined** (similar to JavaScript):
+
+```mbl
+# This works - function called before definition
+say("Hello from hoisted function!")
+
+# Function defined later in the code
+say(message):
+    program.write("Message: " + message)
+
+# This also works - function called after definition
+say("Hello again!")
+```
+
+**Benefits of Function Hoisting:**
+- **Natural Program Flow**: Write main logic at the top, helper functions below
+- **Forward Declarations**: Functions can reference each other regardless of order
+- **Improved Readability**: Organize code with business logic first, implementation details later
+
+**How It Works:**
+MBL uses a two-pass execution system:
+1. **First Pass**: All function declarations are registered (hoisted)
+2. **Second Pass**: Statements execute with all functions available
+
+```mbl
+# Business logic at the top (most important)
+main_process()
+
+# Helper functions defined below (implementation details)
+main_process():
+    initialize_system()
+    process_data()
+    generate_report()
+
+initialize_system():
+    program.write("System initialized")
+
+process_data():
+    program.write("Processing data...")
+
+generate_report():
+    program.write("Report generated")
+```
+
 **Multi-line functions:**
 ```mbl
 process_sale(price, discount_rate):
@@ -839,14 +885,13 @@ MBL uses lexical scoping with these levels:
 ```mbl
 company_name = "Global Corp"    # Program scope
 
-function process_department(dept_name)
+process_department(dept_name):
     company_name = "Local Corp"     # Local scope
     program.company_name = "Modified Global"  # Program scope
     super.company_name = "Parent Scope"       # Parent scope (if nested)
 
     program.write(company_name)         # Prints "Local Corp"
     program.write(program.company_name) # Prints "Modified Global"
-end
 ```
 
 ### Scope Stack
@@ -930,9 +975,8 @@ Output: Money - Budget per quarter
 This function handles currency conversion and
 ensures proper # allocation across quarters.
 ###
-function quarterly_allocation(annual_budget)
+quarterly_allocation(annual_budget):
     return annual_budget / 4
-end
 ```
 
 ### Best Practices

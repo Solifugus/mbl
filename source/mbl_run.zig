@@ -41,7 +41,10 @@ fn signalHandler() void {
 }
 
 pub fn main() !void {
-    const allocator = std.heap.page_allocator;
+    // Use GeneralPurposeAllocator for better memory safety and debugging
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
     // Get command line arguments
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
