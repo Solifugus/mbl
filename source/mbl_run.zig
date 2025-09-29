@@ -94,13 +94,14 @@ pub fn main() !void {
     }
 
     // Initialize components
-    var lex = Lexer.init(allocator, mbl_code);
+    var lex = Lexer.init(allocator, mbl_code, filename);
 
     var mem = Memory.init(allocator);
     defer mem.deinit();
 
     // Tokenize
     const tokens = try lex.scanTokens();
+    defer tokens.deinit(); // Clean up token list
     if (!quiet_mode) std.log.info("✓ Lexer: {} tokens", .{tokens.items.len});
 
     // Parse

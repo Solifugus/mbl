@@ -581,7 +581,8 @@ pub const Interpreter = struct {
                 try self.executeAssignment(assignment);
             },
             .expression_stmt => |expr_stmt| {
-                _ = try self.evaluateExpression(expr_stmt.expression);
+                var result = try self.evaluateExpression(expr_stmt.expression);
+                result.deinit(self.allocator); // Clean up the result value
             },
             .if_statement => |if_stmt| {
                 try self.executeIfStatement(if_stmt);
@@ -619,6 +620,9 @@ pub const Interpreter = struct {
             },
             .activator_declaration => |activator| {
                 try self.registerActivator(activator);
+            },
+            .load_statement => |load_stmt| {
+                try self.executeLoadStatement(load_stmt);
             },
         }
     }
@@ -1048,13 +1052,15 @@ pub const Interpreter = struct {
 
     fn handleProgramWrite(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
         if (arguments.len > 0) {
-            const arg_value = self.evaluateExpression(arguments[0]) catch |err| {
+            var arg_value = self.evaluateExpression(arguments[0]) catch |err| {
                 std.log.warn("Error evaluating argument: {!}", .{err});
                 return MBLValue{ .text = try memory.Text.init(self.allocator, "error") };
             };
+            defer arg_value.deinit(self.allocator); // Clean up the argument value
 
             // Convert any MBL value to string for output
             var output_text: []const u8 = undefined;
+            var needs_free = false;
             switch (arg_value) {
                 .text => |text| {
                     output_text = text.data;
@@ -1062,6 +1068,7 @@ pub const Interpreter = struct {
                 .number => |num| {
                     const formatted = try std.fmt.allocPrint(self.allocator, "{d}", .{num.value});
                     output_text = formatted;
+                    needs_free = true;
                 },
                 .boolean => |bool_val| {
                     output_text = if (bool_val.value) "true" else "false";
@@ -1070,6 +1077,7 @@ pub const Interpreter = struct {
                     const dollars = @as(f64, @floatFromInt(money.value)) / 100.0;
                     const formatted = try std.fmt.allocPrint(self.allocator, "${d:.2} {s}", .{dollars, money.currency});
                     output_text = formatted;
+                    needs_free = true;
                 },
                 else => {
                     output_text = "unsupported_type";
@@ -1078,6 +1086,10 @@ pub const Interpreter = struct {
 
             try self.output.appendSlice(output_text);
             try self.output.append('\n');
+
+            if (needs_free) {
+                self.allocator.free(output_text);
+            }
         }
         return MBLValue{ .text = try memory.Text.init(self.allocator, "") };
     }
@@ -1255,10 +1267,11 @@ pub const Interpreter = struct {
 
     fn handleProgramError(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
         if (arguments.len > 0) {
-            const arg_value = self.evaluateExpression(arguments[0]) catch |err| {
+            var arg_value = self.evaluateExpression(arguments[0]) catch |err| {
                 std.log.warn("Error evaluating error message: {!}", .{err});
                 return MBLValue{ .text = try memory.Text.init(self.allocator, "error") };
             };
+            defer arg_value.deinit(self.allocator); // Clean up the argument value
 
             // Convert any MBL value to string for error output
             var error_text: []const u8 = undefined;
@@ -1287,6 +1300,14 @@ pub const Interpreter = struct {
             const stderr = std.io.getStdErr().writer();
             try stderr.writeAll(error_text);
             try stderr.writeAll("\n");
+
+            // Free allocated strings
+            switch (arg_value) {
+                .number, .money => {
+                    self.allocator.free(error_text);
+                },
+                else => {},
+            }
         }
         return MBLValue{ .text = try memory.Text.init(self.allocator, "") };
     }
@@ -1344,7 +1365,8 @@ pub const Interpreter = struct {
         // Create file handle
         const file_handle = memory.FileHandle.init(self.allocator, path, config) catch |err| {
             const error_msg = try std.fmt.allocPrint(self.allocator, "Failed to open file '{s}': {}", .{ path, err });
-            return MBLValue{ .text = memory.Text{ .data = error_msg } };
+            defer self.allocator.free(error_msg);
+            return MBLValue{ .text = try memory.Text.init(self.allocator, error_msg) };
         };
 
         return MBLValue{ .file_handle = file_handle };
@@ -1371,6 +1393,7 @@ pub const Interpreter = struct {
         // Read entire file
         const file = std.fs.cwd().openFile(path, .{}) catch |err| {
             const error_msg = try std.fmt.allocPrint(self.allocator, "Failed to open file '{s}': {}", .{ path, err });
+            defer self.allocator.free(error_msg);
             try self.recordSimpleError(error_msg, "file_import");
             return MBLValue{ .unknown = {} };
         };
@@ -1378,6 +1401,7 @@ pub const Interpreter = struct {
 
         const file_contents = file.readToEndAlloc(self.allocator, 10 * 1024 * 1024) catch |err| { // 10MB limit
             const error_msg = try std.fmt.allocPrint(self.allocator, "Failed to read file '{s}': {}", .{ path, err });
+            defer self.allocator.free(error_msg);
             try self.recordSimpleError(error_msg, "file_read");
             return MBLValue{ .unknown = {} };
         };
@@ -1776,6 +1800,7 @@ pub const Interpreter = struct {
                 const left_text = try self.tryValueToText(left);
                 const right_text = try self.tryValueToText(right);
                 const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.data, right_text.data });
+                defer self.allocator.free(result); // Free the temporary string
                 return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
             },
             .number => |left_num| {
@@ -1868,6 +1893,7 @@ pub const Interpreter = struct {
                 const left_text = try self.tryValueToText(left);
                 const right_text = try self.tryValueToText(right);
                 const result = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ left_text.data, right_text.data });
+                defer self.allocator.free(result); // Free the temporary string
                 return MBLValue{ .text = try memory.Text.init(self.allocator, result) };
             },
         }
@@ -2674,6 +2700,63 @@ pub const Interpreter = struct {
         return InterpreterError.ReturnExecuted;
     }
 
+    fn executeLoadStatement(self: *Interpreter, load_stmt: parser.LoadStatement) anyerror!void {
+        self.log("🔧 Executing load statement for file: {s}", .{load_stmt.filename});
+
+        // Read the file content
+        const file = std.fs.cwd().openFile(load_stmt.filename, .{}) catch |err| {
+            std.log.err("❌ Error opening file '{s}': {}", .{load_stmt.filename, err});
+            try self.recordSimpleError("Could not open file for loading", "load");
+            return;
+        };
+        defer file.close();
+
+        const file_size = try file.getEndPos();
+        const source_code = try self.allocator.alloc(u8, file_size);
+        defer self.allocator.free(source_code);
+
+        _ = try file.readAll(source_code);
+
+        // Import lexer and parser
+        const lexer = @import("lexer.zig");
+        const parser_module = @import("parser.zig");
+
+        // Create lexer and parser for the loaded file
+        var lex = lexer.Lexer.init(self.allocator, source_code, load_stmt.filename);
+
+        // Tokenize the loaded file
+        const tokens = lex.scanTokens() catch |err| {
+            std.log.err("❌ Error tokenizing file '{s}': {}", .{load_stmt.filename, err});
+            try self.recordSimpleError("Could not tokenize loaded file", "load");
+            return;
+        };
+        defer tokens.deinit(); // Clean up token list
+
+        // Parse the loaded file
+        var file_parser = parser_module.Parser.init(self.allocator, tokens.items);
+        const statements = file_parser.parse() catch |err| {
+            std.log.err("❌ Error parsing file '{s}': {}", .{load_stmt.filename, err});
+            try self.recordSimpleError("Could not parse loaded file", "load");
+            return;
+        };
+        defer {
+            // Clean up statements
+            for (statements) |*stmt| {
+                stmt.deinit(self.allocator);
+            }
+            self.allocator.free(statements);
+        }
+
+        self.log("✅ Successfully loaded and parsed {} statements from '{s}'", .{statements.len, load_stmt.filename});
+
+        // Execute the loaded statements
+        for (statements) |stmt| {
+            try self.executeStatement(stmt);
+        }
+
+        self.log("🎉 Successfully executed all statements from loaded file '{s}'", .{load_stmt.filename});
+    }
+
     fn callFunction(self: *Interpreter, func_name: []const u8, arguments: []parser.Expression) anyerror!MBLValue {
         // Look up function
         const func_decl = self.functions.get(func_name) orelse {
@@ -2936,7 +3019,13 @@ pub const Interpreter = struct {
 
         // Evaluate all arguments first
         var arg_values = std.ArrayList(MBLValue).init(self.allocator);
-        defer arg_values.deinit();
+        defer {
+            // Clean up all argument values
+            for (arg_values.items) |*arg_value| {
+                arg_value.deinit(self.allocator);
+            }
+            arg_values.deinit();
+        }
 
         for (arguments) |arg_expr| {
             const arg_value = try self.evaluateExpression(arg_expr);

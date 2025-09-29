@@ -52,12 +52,30 @@ pub const ErrorRecord = struct {
 
     pub fn toRecord(self: ErrorRecord, allocator: std.mem.Allocator) !Record {
         var record = Record.init(allocator);
-        try record.set("message", MBLValue{ .text = self.message });
+
+        // Create copies of the Text values to avoid double-free
+        const message_copy = try Text.init(allocator, self.message.data);
+        const context_copy = try Text.init(allocator, self.context.data);
+        const operation_copy = try Text.init(allocator, self.operation.data);
+
+        // Create a copy of the values list
+        var values_copy = List.init(allocator);
+        for (self.values.data.items) |item| {
+            switch (item) {
+                .text => |text| {
+                    const text_copy = try Text.init(allocator, text.data);
+                    try values_copy.append(MBLValue{ .text = text_copy });
+                },
+                else => try values_copy.append(item), // Copy other types as-is
+            }
+        }
+
+        try record.set("message", MBLValue{ .text = message_copy });
         try record.set("line", MBLValue{ .number = self.line });
         try record.set("column", MBLValue{ .number = self.column });
-        try record.set("context", MBLValue{ .text = self.context });
-        try record.set("operation", MBLValue{ .text = self.operation });
-        try record.set("values", MBLValue{ .list = self.values });
+        try record.set("context", MBLValue{ .text = context_copy });
+        try record.set("operation", MBLValue{ .text = operation_copy });
+        try record.set("values", MBLValue{ .list = values_copy });
         return record;
     }
 };
@@ -666,6 +684,12 @@ pub const Record = struct {
 
     pub fn set(self: *Record, key: []const u8, value: MBLValue) !void {
         const owned_key = try self.allocator.dupe(u8, key);
+
+        // Clean up old value if it exists
+        if (self.data.getPtr(key)) |old_value| {
+            old_value.deinit(self.allocator);
+        }
+
         try self.data.put(owned_key, value);
     }
 

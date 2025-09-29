@@ -39,6 +39,7 @@ pub const Statement = union(enum) {
     continue_stmt: ContinueStatement,
     return_statement: ReturnStatement,
     activator_declaration: ActivatorDeclaration,
+    load_statement: LoadStatement,
 
     pub fn deinit(self: *Statement, allocator: std.mem.Allocator) void {
         switch (self.*) {
@@ -54,6 +55,7 @@ pub const Statement = union(enum) {
             .continue_stmt => |*stmt| stmt.deinit(allocator),
             .return_statement => |*stmt| stmt.deinit(allocator),
             .activator_declaration => |*stmt| stmt.deinit(allocator),
+            .load_statement => |*stmt| stmt.deinit(allocator),
         }
     }
 };
@@ -237,6 +239,15 @@ pub const ActivatorDeclaration = struct {
             stmt.deinit(allocator);
         }
         allocator.free(self.body);
+    }
+};
+
+pub const LoadStatement = struct {
+    filename: []const u8, // Path to the file to load
+    position: Position,   // Source location for error reporting
+
+    pub fn deinit(self: *LoadStatement, allocator: std.mem.Allocator) void {
+        allocator.free(self.filename);
     }
 };
 
@@ -545,6 +556,9 @@ pub const Parser = struct {
                 .position = Position.fromToken(todo_token),
             } };
         }
+        if (self.match(.load_kw)) {
+            return Statement{ .load_statement = try self.parseLoadStatement() };
+        }
 
         // Assignment or expression statement
         return self.parseAssignmentOrExpression();
@@ -759,6 +773,26 @@ pub const Parser = struct {
         return ReturnStatement{ .value = value };
     }
 
+    fn parseLoadStatement(self: *Parser) ParseError!LoadStatement {
+        const load_token = self.previous(); // Get the 'load' token for position
+
+        // Expect a string literal with the filename
+        const filename_token = try self.consume(.text, "Expected filename string after 'load'");
+        // Strip the quotes from the filename (assuming it's wrapped in quotes)
+        const raw_filename = filename_token.lexeme;
+        const filename = if (raw_filename.len >= 2 and raw_filename[0] == '"' and raw_filename[raw_filename.len - 1] == '"')
+            try self.allocator.dupe(u8, raw_filename[1..raw_filename.len - 1])
+        else
+            try self.allocator.dupe(u8, raw_filename);
+
+        self.consumeStatementEnd();
+
+        return LoadStatement{
+            .filename = filename,
+            .position = Position.fromToken(load_token),
+        };
+    }
+
     fn parseGotoStatement(self: *Parser) ParseError!GotoStatement {
         const target_token = try self.consumeLabelName("Expected label name after goto");
         const target = try self.allocator.dupe(u8, target_token.lexeme);
@@ -772,7 +806,7 @@ pub const Parser = struct {
         const saved_pos = self.current;
 
         // Try to parse as assignment target first
-        const target = self.parseAssignmentTarget() catch {
+        var target = self.parseAssignmentTarget() catch {
             // If parsing as assignment target fails, reset and parse as full expression
             self.current = saved_pos;
             const start_token = self.peek();
@@ -798,7 +832,8 @@ pub const Parser = struct {
         } else {
             // Not an assignment - check if we have more tokens that need parsing (like method calls)
             if (self.check(.left_paren) or self.check(.left_bracket)) {
-                // We have more to parse, so reset and parse as full expression
+                // We have more to parse, clean up target and reparse as full expression
+                target.deinit(self.allocator); // Clean up the partial parse
                 self.current = saved_pos;
                 const start_token = self.peek();
                 const expr = try self.parseExpression();
@@ -1517,7 +1552,7 @@ pub fn testParser() !void {
     ;
 
     // First tokenize
-    var lexer = Lexer.init(allocator, test_source);
+    var lexer = Lexer.init(allocator, test_source, "test.mbl");
     const tokens = try lexer.scanTokens();
     defer tokens.deinit();
 

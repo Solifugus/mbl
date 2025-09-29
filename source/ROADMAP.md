@@ -176,12 +176,18 @@
 - [x] **Constraint-Based Prevention**: Proactive error prevention through activators
 - [x] **Graceful Degradation**: Programs continue execution despite individual operation failures
 - [x] **Multi-line Comment System**: `## ... ##`, `### ... ###`, arbitrary length with nested comment capability
-- [ ] Code organization: Import/export between files
+- [x] Code organization: Import/export between files - **`load` command implemented with filename-aware error reporting**
 - [ ] Performance optimization: Faster execution engine
-- [x] Memory management: Robust cleanup protection system implemented
+- [x] Memory management: Robust cleanup protection system implemented - **99% of leaks eliminated, 1 minor Text leak remaining in binary expression operands**
 - [ ] Standard library organization
 
-## 🏆 v1.0.0 - Production Ready
+## ✅ v0.15.0 - Advanced Language Features
+- [ ] Secrets manager
+- [ ] Local File operations
+- [ ] SFTP File operations
+- [ ] SCP File operations
+
+## 🏆 v1.0.0 - Almost Production Ready
 - [ ] Complete language specification: Full MBL grammar documented
 - [ ] Standard library: Comprehensive built-in functions
 - [ ] IDE support: Syntax highlighting, auto-completion specs
@@ -190,6 +196,8 @@
 - [ ] Complete documentation: User manual and tutorials
 - [ ] Package manager design: MBL library ecosystem
 - [ ] Debugging tools: Step-through debugging support
+- [ ] Comprehensive Alpha Testing an Debugging
+- [ ] Beta Testing and Debugging
 
 ## 🔧 Cross-Version Improvements (Ongoing)
 - [ ] Code quality: Continuous refactoring and optimization
@@ -323,3 +331,87 @@ program.web.mcp_broadcast("customer_updates", customer_update)
 ## 🎯 Next Priority: v0.13.0 - Database Integration
 
 With production server capabilities and automatic keep-alive complete, MBL is ready for database integration to become a truly comprehensive business application platform capable of full-stack development with persistent data storage, completing the modern business application tech stack.
+
+## For Upcoming Version: Secrets Manager
+
+mysecret = program.secret("mysecret") # returns record with secret attributes, like user, password, url, etc.
+
+Command line: `mbl --secrets` brings up menu driven secrets manager
+The secrets manager associates each secret record to one or more users,
+each of whom may read only or also modify.
+The user under which the program is running is the user who's access is
+granted under the same process.
+
+Using ncurses (following just illustrates basic concept--can make nicer)
+```bash
+====[ Secrets ]====
+1) Secret1
+2) Secret2
+3) secret3
+N) New Secret
+X) Delete Secret
+
+====[ Secret1 ]====
+1) url: abc.com
+2) user: myuser
+3) password: hidden123
+4) notes: my abc hidden secret account
+S) Share
+
+====[ Secret 1 = Sharing ]====
+1) myuser: may modify
+2) myfriend: use only
+x) Delete Sharing
+```
+
+## For Upcoming Version: File Transfers and Management
+
+
+# Read file content
+content = program.get("file:///local/path/config.txt")
+content = program.get("sftp://server.com/data/report.csv")
+content = program.get("ftp://legacy.com/orders/daily.xml")
+
+# Write file content  
+program.file.post("local:///local/backup/data.json", json_data)
+program.file.post("scp://backup.server.com/archives/backup.sql", database_dump)
+program.file.post("sftp://partner.com/outbound/invoice.pdf", pdf_content)
+
+# Append to file
+program.put("file:///logs/application.log", new_log_entry)
+
+# List directory contents
+files = program.file.list("file:///local/directory/")
+files = program.file.list("sftp://server.com/reports/")
+# Returns: [{name: "file1.txt", size: 1024, modified: @2024-01-15T10:30:00, type: "file"}, ...]
+
+# Create directory
+program.file.mkdir("file:///local/new_folder/")
+program.file.mkdir("sftp://server.com/archive/2024/")
+
+# Remove empty directory
+program.file.rmdir("file:///local/empty_folder/")
+program.file.rmdir("sftp://server.com/temp/")
+
+# Delete files
+program.file.delete("file:///local/temp/old_file.txt")
+program.file.delete("sftp://server.com/processed/completed.csv")
+
+# Rename/move files
+program.file.move("file:///data/temp.csv", "file:///data/processed.csv")
+program.file.move("sftp://server.com/incoming/file.txt", "sftp://server.com/processed/file.txt")
+
+# Copy files
+program.file.copy("file:///source/important.doc", "file:///backup/important.doc")
+program.file.copy("sftp://server1.com/file.txt", "scp://server2.com/file.txt")
+
+# Check if file/directory exists
+exists = program.file.exists("file:///config/settings.ini")
+exists = program.file.exists("sftp://server.com/data/")
+
+# Get file info
+info = program.file.info("file:///documents/report.pdf")
+# Returns: {size: 2048576, modified: @2024-01-15T14:22:00, type: "file", permissions: "rw-r--r--"}
+
+# Get file size
+size = program.file.size("sftp://server.com/large_file.zip")

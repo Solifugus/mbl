@@ -53,6 +53,7 @@ pub const TokenType = enum {
     return_kw,      // return
     anytime_kw,     // anytime (for activators)
     todo_kw,        // todo (empty block placeholder)
+    load_kw,        // load (import library file)
     true_kw,        // true
     false_kw,       // false
     super_kw,       // super
@@ -117,6 +118,7 @@ pub const TokenType = enum {
             .return_kw => "return",
             .anytime_kw => "anytime",
             .todo_kw => "todo",
+            .load_kw => "load",
             .true_kw => "true",
             .false_kw => "false",
             .super_kw => "super",
@@ -141,11 +143,12 @@ pub const Token = struct {
     lexeme: []const u8,
     line: usize,
     column: usize,
+    filename: []const u8, // Track source file for error reporting
 
     pub fn format(self: Token, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = fmt;
         _ = options;
-        try writer.print("{s}('{s}') at {}:{}", .{ self.type.toString(), self.lexeme, self.line, self.column });
+        try writer.print("{s}('{s}') at {s}:{}:{}", .{ self.type.toString(), self.lexeme, self.filename, self.line, self.column });
     }
 };
 
@@ -166,8 +169,9 @@ pub const Lexer = struct {
     start_column: usize,
     allocator: std.mem.Allocator,
     at_line_start: bool,
+    filename: []const u8, // Track current source filename
 
-    pub fn init(allocator: std.mem.Allocator, source: []const u8) Lexer {
+    pub fn init(allocator: std.mem.Allocator, source: []const u8, filename: []const u8) Lexer {
         return Lexer{
             .source = source,
             .start = 0,
@@ -177,6 +181,7 @@ pub const Lexer = struct {
             .start_column = 1,
             .allocator = allocator,
             .at_line_start = true,
+            .filename = filename,
         };
     }
 
@@ -199,12 +204,7 @@ pub const Lexer = struct {
             }
         }
 
-        try tokens.append(Token{
-            .type = .eof,
-            .lexeme = "",
-            .line = self.line,
-            .column = self.column,
-        });
+        try tokens.append(self.makeTokenWithLexeme(.eof, ""));
 
         return tokens;
     }
@@ -222,12 +222,7 @@ pub const Lexer = struct {
                 }
             },
             '\r' => null, // Skip carriage return
-            '\t' => Token{
-                .type = .indent,
-                .lexeme = self.source[self.start..self.current],
-                .line = self.line,
-                .column = self.start_column,
-            },
+            '\t' => self.makeToken(.indent),
             '\n' => {
                 self.line += 1;
                 self.column = 1;
@@ -237,6 +232,7 @@ pub const Lexer = struct {
                     .lexeme = self.source[self.start..self.current],
                     .line = self.line - 1,
                     .column = self.start_column,
+                    .filename = self.filename,
                 };
             },
 
@@ -375,6 +371,7 @@ pub const Lexer = struct {
             .lexeme = self.source[self.start..self.current],
             .line = self.line,
             .column = self.start_column,
+            .filename = self.filename,
         };
     }
 
@@ -393,6 +390,7 @@ pub const Lexer = struct {
                     .lexeme = self.source[self.start..self.current],
                     .line = self.line,
                     .column = self.start_column,
+                    .filename = self.filename,
                 };
             } else {
                 // This starts a multi-quote string: continue counting
@@ -434,6 +432,7 @@ pub const Lexer = struct {
             .lexeme = self.source[self.start..self.current],
             .line = self.line,
             .column = self.start_column,
+            .filename = self.filename,
         };
     }
 
@@ -460,6 +459,7 @@ pub const Lexer = struct {
             .lexeme = self.source[self.start..self.current],
             .line = self.line,
             .column = self.start_column,
+            .filename = self.filename,
         };
     }
 
@@ -482,6 +482,7 @@ pub const Lexer = struct {
             .lexeme = self.source[self.start..self.current],
             .line = self.line,
             .column = self.start_column,
+            .filename = self.filename,
         };
     }
 
@@ -514,6 +515,7 @@ pub const Lexer = struct {
             .lexeme = self.source[self.start..self.current],
             .line = self.line,
             .column = self.start_column,
+            .filename = self.filename,
         };
     }
 
@@ -530,6 +532,7 @@ pub const Lexer = struct {
             .lexeme = text,
             .line = self.line,
             .column = self.start_column,
+            .filename = self.filename,
         };
     }
 
@@ -552,6 +555,7 @@ pub const Lexer = struct {
             .{ "return", .return_kw },
             .{ "anytime", .anytime_kw },
             .{ "todo", .todo_kw },
+            .{ "load", .load_kw },
             .{ "true", .true_kw },
             .{ "false", .false_kw },
             .{ "super", .super_kw },
@@ -636,6 +640,7 @@ pub const Lexer = struct {
                 .lexeme = self.source[self.start..self.current],
                 .line = self.line,
                 .column = self.start_column,
+                .filename = self.filename,
             };
         } else {
             // Less than 4 spaces, treat as regular whitespace
@@ -650,6 +655,17 @@ pub const Lexer = struct {
             .lexeme = self.source[self.start..self.current],
             .line = self.line,
             .column = self.start_column,
+            .filename = self.filename,
+        };
+    }
+
+    fn makeTokenWithLexeme(self: *Lexer, token_type: TokenType, lexeme: []const u8) Token {
+        return Token{
+            .type = token_type,
+            .lexeme = lexeme,
+            .line = self.line,
+            .column = self.start_column,
+            .filename = self.filename,
         };
     }
 };
@@ -670,7 +686,7 @@ pub fn testLexer() !void {
         \\	customer.balance -= amount; return true
     ;
 
-    var lexer = Lexer.init(allocator, test_source);
+    var lexer = Lexer.init(allocator, test_source, "test.mbl");
     const tokens = try lexer.scanTokens();
     defer tokens.deinit();
 
