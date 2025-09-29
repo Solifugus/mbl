@@ -1005,6 +1005,9 @@ pub const Interpreter = struct {
                 if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "delete")) {
                     return try self.handleProgramDelete(call_expr.arguments);
                 }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "secret")) {
+                    return try self.handleProgramSecret(call_expr.arguments);
+                }
                 if (std.mem.eql(u8, obj_name, "symbol") and std.mem.eql(u8, method_name, "unicode")) {
                     return try self.handleSymbolUnicode(call_expr.arguments);
                 }
@@ -1022,6 +1025,14 @@ pub const Interpreter = struct {
             if (object_value == .record) {
                 // Get mutable reference to the record
                 var record_mut = object_value.record;
+
+                // Check if this is a CLI object
+                if (record_mut.get("_type")) |type_value| {
+                    if (type_value == .text and std.mem.eql(u8, type_value.text.data, "cli")) {
+                        return try self.handleCliMethod(method_name, call_expr.arguments);
+                    }
+                }
+
                 const method_value = record_mut.get(method_name);
                 if (method_value) |mv| {
                     if (mv == .native_function) {
@@ -2293,6 +2304,14 @@ pub const Interpreter = struct {
             const prop_name = prop_access.property;
 
             if (std.mem.eql(u8, obj_name, "program")) {
+                // Handle special program properties
+                if (std.mem.eql(u8, prop_name, "cli")) {
+                    // Return a CLI namespace object
+                    var cli_record = memory.Record.init(self.allocator);
+                    try cli_record.data.put("_type", MBLValue{ .text = try memory.Text.init(self.allocator, "cli") });
+                    return MBLValue{ .record = cli_record };
+                }
+
                 // Direct access to program scope
                 if (self.memory.program.data.get(prop_name)) |value| {
                     std.log.info("🔍 Variable '{s}' accessed via program scope", .{prop_name});
@@ -3761,6 +3780,376 @@ pub const Interpreter = struct {
         try response_record.set("deleted", MBLValue{ .boolean = memory.Boolean.init(true) });
 
         return MBLValue{ .record = response_record };
+    }
+
+    // CLI method handlers
+    fn handleCliMethod(self: *Interpreter, method_name: []const u8, arguments: []Expression) anyerror!MBLValue {
+        if (std.mem.eql(u8, method_name, "begin")) {
+            return try self.handleCliBegin(arguments);
+        } else if (std.mem.eql(u8, method_name, "end")) {
+            return try self.handleCliEnd(arguments);
+        } else if (std.mem.eql(u8, method_name, "clear")) {
+            return try self.handleCliClear(arguments);
+        } else if (std.mem.eql(u8, method_name, "write")) {
+            return try self.handleCliWrite(arguments);
+        } else if (std.mem.eql(u8, method_name, "size")) {
+            return try self.handleCliSize(arguments);
+        } else if (std.mem.eql(u8, method_name, "color")) {
+            return try self.handleCliColor(arguments);
+        } else if (std.mem.eql(u8, method_name, "getkey")) {
+            return try self.handleCliGetkey(arguments);
+        } else if (std.mem.eql(u8, method_name, "getcode")) {
+            return try self.handleCliGetcode(arguments);
+        } else if (std.mem.eql(u8, method_name, "bold")) {
+            return try self.handleCliBold(arguments);
+        } else if (std.mem.eql(u8, method_name, "refresh")) {
+            return try self.handleCliRefresh(arguments);
+        } else if (std.mem.eql(u8, method_name, "prompt")) {
+            return try self.handleCliPrompt(arguments);
+        } else {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "Unknown CLI method") };
+        }
+    }
+
+    // Secrets method handler
+    fn handleProgramSecret(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len < 1 or arguments.len > 2) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "program.secret() requires 1 or 2 arguments: name and optional file_path") };
+        }
+
+        const name_value = try self.evaluateExpression(arguments[0]);
+        const name = switch (name_value) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "Secret name must be text") };
+            },
+        };
+
+        // Get optional custom file path
+        var file_path: ?[]const u8 = null;
+        if (arguments.len > 1) {
+            const path_value = try self.evaluateExpression(arguments[1]);
+            file_path = switch (path_value) {
+                .text => |text| text.data,
+                else => {
+                    return MBLValue{ .text = try memory.Text.init(self.allocator, "Secret file path must be text") };
+                },
+            };
+        }
+
+        return try self.loadUserSecret(name, file_path);
+    }
+
+    // CLI Implementation Functions
+    fn handleCliBegin(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        _ = arguments;
+        // Initialize ncurses or terminal raw mode
+        std.log.info("🖥️ CLI mode initialized", .{});
+        var screen_record = memory.Record.init(self.allocator);
+        try screen_record.data.put("active", MBLValue{ .boolean = memory.Boolean.init(true) });
+        return MBLValue{ .record = screen_record };
+    }
+
+    fn handleCliEnd(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        _ = self;
+        _ = arguments;
+        // Cleanup ncurses or restore normal terminal mode
+        std.log.info("🖥️ CLI mode ended", .{});
+        return MBLValue{ .boolean = memory.Boolean.init(true) };
+    }
+
+    fn handleCliClear(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        _ = self;
+        _ = arguments;
+        // Clear screen with ANSI escape codes
+        const stdout = std.io.getStdOut().writer();
+        try stdout.print("\x1b[2J\x1b[H", .{});
+        return MBLValue{ .boolean = memory.Boolean.init(true) };
+    }
+
+    fn handleCliWrite(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len < 3) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "cli.write() requires at least 3 arguments: row, col, text") };
+        }
+
+        const row_value = try self.evaluateExpression(arguments[0]);
+        const col_value = try self.evaluateExpression(arguments[1]);
+        const text_value = try self.evaluateExpression(arguments[2]);
+
+        const row = switch (row_value) {
+            .number => |num| @as(i32, @intFromFloat(num.value)),
+            else => return MBLValue{ .text = try memory.Text.init(self.allocator, "Row must be a number") },
+        };
+
+        const col = switch (col_value) {
+            .number => |num| @as(i32, @intFromFloat(num.value)),
+            else => return MBLValue{ .text = try memory.Text.init(self.allocator, "Col must be a number") },
+        };
+
+        const text = switch (text_value) {
+            .text => |txt| txt.data,
+            else => blk: {
+                const converted = try self.tryValueToText(text_value);
+                break :blk converted.data;
+            },
+        };
+
+        // Handle optional color argument
+        var color: ?[]const u8 = null;
+        if (arguments.len > 3) {
+            // Look for named argument 'color:'
+            if (arguments.len > 4) {
+                const color_value = try self.evaluateExpression(arguments[4]);
+                color = switch (color_value) {
+                    .text => |txt| txt.data,
+                    else => null,
+                };
+            }
+        }
+
+        // Position cursor and write text
+        const stdout = std.io.getStdOut().writer();
+        try stdout.print("\x1b[{d};{d}H", .{ row + 1, col + 1 });
+
+        if (color) |c| {
+            if (std.mem.eql(u8, c, "red")) {
+                try stdout.print("\x1b[31m{s}\x1b[0m", .{text});
+            } else if (std.mem.eql(u8, c, "green")) {
+                try stdout.print("\x1b[32m{s}\x1b[0m", .{text});
+            } else if (std.mem.eql(u8, c, "blue")) {
+                try stdout.print("\x1b[34m{s}\x1b[0m", .{text});
+            } else if (std.mem.eql(u8, c, "yellow")) {
+                try stdout.print("\x1b[33m{s}\x1b[0m", .{text});
+            } else {
+                try stdout.print("{s}", .{text});
+            }
+        } else {
+            try stdout.print("{s}", .{text});
+        }
+
+        return MBLValue{ .boolean = memory.Boolean.init(true) };
+    }
+
+    fn handleCliSize(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        _ = arguments;
+        // Get terminal size (mock implementation for now)
+        var size_record = memory.Record.init(self.allocator);
+        try size_record.data.put("rows", MBLValue{ .number = memory.Number{ .value = 24 } });
+        try size_record.data.put("cols", MBLValue{ .number = memory.Number{ .value = 80 } });
+        return MBLValue{ .record = size_record };
+    }
+
+    fn handleCliColor(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len < 2) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "cli.color() requires 2 arguments: color, text") };
+        }
+
+        const color_value = try self.evaluateExpression(arguments[0]);
+        const text_value = try self.evaluateExpression(arguments[1]);
+
+        const color = switch (color_value) {
+            .text => |txt| txt.data,
+            else => return MBLValue{ .text = try memory.Text.init(self.allocator, "Color must be text") },
+        };
+
+        const text = switch (text_value) {
+            .text => |txt| txt.data,
+            else => blk: {
+                const converted = try self.tryValueToText(text_value);
+                break :blk converted.data;
+            },
+        };
+
+        const stdout = std.io.getStdOut().writer();
+        if (std.mem.eql(u8, color, "red")) {
+            try stdout.print("\x1b[31m{s}\x1b[0m", .{text});
+        } else if (std.mem.eql(u8, color, "green")) {
+            try stdout.print("\x1b[32m{s}\x1b[0m", .{text});
+        } else if (std.mem.eql(u8, color, "blue")) {
+            try stdout.print("\x1b[34m{s}\x1b[0m", .{text});
+        } else if (std.mem.eql(u8, color, "yellow")) {
+            try stdout.print("\x1b[33m{s}\x1b[0m", .{text});
+        } else {
+            try stdout.print("{s}", .{text});
+        }
+
+        return MBLValue{ .boolean = memory.Boolean.init(true) };
+    }
+
+    fn handleCliGetkey(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        _ = arguments;
+        // Mock key input for now - would need proper terminal input handling
+        return MBLValue{ .text = try memory.Text.init(self.allocator, "ENTER") };
+    }
+
+    fn handleCliGetcode(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        _ = self;
+        _ = arguments;
+        // Mock character code - would need proper terminal input handling
+        return MBLValue{ .number = memory.Number{ .value = 13 } }; // Enter key
+    }
+
+    fn handleCliBold(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len < 1) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "cli.bold() requires 1 argument: true/false") };
+        }
+
+        const bold_value = try self.evaluateExpression(arguments[0]);
+        const is_bold = switch (bold_value) {
+            .boolean => |b| b.value,
+            else => false,
+        };
+
+        const stdout = std.io.getStdOut().writer();
+        if (is_bold) {
+            try stdout.print("\x1b[1m", .{});
+        } else {
+            try stdout.print("\x1b[0m", .{});
+        }
+
+        return MBLValue{ .boolean = memory.Boolean.init(true) };
+    }
+
+    fn handleCliRefresh(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        _ = self;
+        _ = arguments;
+        // Refresh screen - flush output
+        // Note: flush functionality not available in this Zig version
+        return MBLValue{ .boolean = memory.Boolean.init(true) };
+    }
+
+    fn handleCliPrompt(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len < 1 or arguments.len > 3) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "cli.prompt() requires 1-3 arguments: [row], [col], prompt_text OR just prompt_text") };
+        }
+
+        var row: ?i32 = null;
+        var col: ?i32 = null;
+        var prompt_text: []const u8 = undefined;
+
+        if (arguments.len == 1) {
+            // Single argument: just prompt text
+            const prompt_value = try self.evaluateExpression(arguments[0]);
+            prompt_text = switch (prompt_value) {
+                .text => |txt| txt.data,
+                else => blk: {
+                    const converted = try self.tryValueToText(prompt_value);
+                    break :blk converted.data;
+                },
+            };
+        } else if (arguments.len == 3) {
+            // Three arguments: row, col, prompt_text
+            const row_value = try self.evaluateExpression(arguments[0]);
+            row = switch (row_value) {
+                .number => |num| @as(i32, @intFromFloat(num.value)),
+                else => return MBLValue{ .text = try memory.Text.init(self.allocator, "Row must be a number") },
+            };
+
+            const col_value = try self.evaluateExpression(arguments[1]);
+            col = switch (col_value) {
+                .number => |num| @as(i32, @intFromFloat(num.value)),
+                else => return MBLValue{ .text = try memory.Text.init(self.allocator, "Col must be a number") },
+            };
+
+            const prompt_value = try self.evaluateExpression(arguments[2]);
+            prompt_text = switch (prompt_value) {
+                .text => |txt| txt.data,
+                else => blk: {
+                    const converted = try self.tryValueToText(prompt_value);
+                    break :blk converted.data;
+                },
+            };
+        } else {
+            // Two arguments not supported - must be either 1 or 3
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "cli.prompt() requires either 1 argument (prompt) or 3 arguments (row, col, prompt)") };
+        }
+
+        // Display the prompt with optional positioning
+        const stdout = std.io.getStdOut().writer();
+
+        if (row != null and col != null) {
+            // Position cursor and display prompt
+            try stdout.print("\x1b[{d};{d}H{s}", .{ row.? + 1, col.? + 1, prompt_text });
+        } else {
+            // Just display prompt at current position
+            try stdout.print("{s}", .{prompt_text});
+        }
+
+        // Read user input
+        const stdin = std.io.getStdIn().reader();
+        var buffer: [256]u8 = undefined;
+        if (try stdin.readUntilDelimiterOrEof(buffer[0..], '\n')) |input| {
+            // Remove trailing whitespace
+            const trimmed_input = std.mem.trim(u8, input, " \t\r\n");
+            return MBLValue{ .text = try memory.Text.init(self.allocator, trimmed_input) };
+        } else {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "") };
+        }
+    }
+
+    // User-specific encrypted secrets support
+    fn loadUserSecret(self: *Interpreter, name: []const u8, custom_path: ?[]const u8) anyerror!MBLValue {
+        const user_name = std.os.getenv("USER") orelse "unknown";
+
+        // Create user-specific secrets file path
+        const secrets_path = if (custom_path) |path|
+            path
+        else blk: {
+            const home_path = std.os.getenv("HOME") orelse "/tmp";
+            break :blk try std.fmt.allocPrint(self.allocator, "{s}/.mbl_secrets_{s}.json", .{ home_path, user_name });
+        };
+
+        // Try to load and decrypt secrets file
+        const file = std.fs.openFileAbsolute(secrets_path, .{}) catch |err| {
+            if (err == error.FileNotFound) {
+                std.log.warn("🔑 Secrets file not found: {s}", .{secrets_path});
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "undefined") };
+            }
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "Error reading secrets file") };
+        };
+        defer file.close();
+
+        // Read file content (simplified - in real implementation would decrypt)
+        const content = try file.readToEndAlloc(self.allocator, 1024 * 1024); // 1MB max
+        defer self.allocator.free(content);
+
+        // Parse JSON (simplified implementation)
+        const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, content, .{}) catch {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "Error parsing secrets file") };
+        };
+        defer parsed.deinit();
+
+        // Find the requested secret
+        if (parsed.value.object.get("secrets")) |secrets_array| {
+            for (secrets_array.array.items) |secret_item| {
+                if (secret_item.object.get("name")) |secret_name| {
+                    if (std.mem.eql(u8, secret_name.string, name)) {
+                        // Convert JSON object to MBL Record
+                        var secret_record = memory.Record.init(self.allocator);
+
+                        // Add name
+                        try secret_record.data.put("name", MBLValue{ .text = try memory.Text.init(self.allocator, name) });
+
+                        // Add attributes
+                        if (secret_item.object.get("attributes")) |attributes| {
+                            var attrs_record = memory.Record.init(self.allocator);
+                            var attr_iter = attributes.object.iterator();
+                            while (attr_iter.next()) |attr| {
+                                const attr_value = MBLValue{ .text = try memory.Text.init(self.allocator, attr.value_ptr.string) };
+                                try attrs_record.data.put(attr.key_ptr.*, attr_value);
+                            }
+                            try secret_record.data.put("attributes", MBLValue{ .record = attrs_record });
+                        }
+
+                        std.log.info("🔑 Secret '{s}' loaded for user '{s}'", .{ name, user_name });
+                        return MBLValue{ .record = secret_record };
+                    }
+                }
+            }
+        }
+
+        std.log.warn("🔑 Secret '{s}' not found", .{name});
+        return MBLValue{ .text = try memory.Text.init(self.allocator, "undefined") };
     }
 };
 

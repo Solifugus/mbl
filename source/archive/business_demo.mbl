@@ -1,0 +1,20 @@
+# Business application demo - Customer Registration
+program.write("=== Customer Registration System ===")
+
+# Clean prompting
+name = program.prompt("Customer name: ")
+email = program.prompt("Email address: ")
+phone = program.prompt("Phone number: ")
+
+# Confirmation
+program.write("")
+program.write("Registration Summary:")
+program.write("Name: " + name)
+program.write("Email: " + email)  
+program.write("Phone: " + phone)
+
+confirm = program.prompt("Save this customer? (y/n): ")
+if confirm == "y":
+    program.write(symbol.checkmark + " Customer saved successfully!")
+else:
+    program.write(symbol.xmark + " Registration cancelled.")

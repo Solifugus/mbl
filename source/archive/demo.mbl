@@ -1,0 +1,13 @@
+
+program.write("Hello.  I have questions.")
+name = program.prompt("What is your name? ")
+born = program.prompt("What is your birth year? ")
+age = get_age( 2025, born )
+program.write("You must be "+age+" year old now.")
+
+get_age( year, born ):
+	return(year - born)
+
+program.write("Good bye.")
+
+

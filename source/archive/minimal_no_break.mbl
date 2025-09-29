@@ -1,0 +1,4 @@
+# Test without break statement
+data = program.import("minimal_test.csv")
+for record in data:
+    program.write("In loop")

@@ -1,0 +1,7 @@
+program.write("Hello.  I have questions.")
+name = program.prompt("What is your name? ")
+born_text = program.prompt("What is your birth year? ")
+
+# Try simple test first
+program.write("You entered: " + born_text)
+program.write("Good bye.")

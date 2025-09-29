@@ -1,0 +1,30 @@
+# MBL v0.10.0 - Complete Text Methods & Symbol System Demo
+
+# Text Methods Demo
+original_text = "  Hello World  "
+program.write("Original: \"" + original_text + "\"")
+program.write("Length: " + original_text.len())
+program.write("Trimmed: \"" + original_text.trim() + "\"")
+program.write("Left trimmed: \"" + original_text.left_trim() + "\"") 
+program.write("Right trimmed: \"" + original_text.right_trim() + "\"")
+program.write("Left padded: \"" + original_text.trim().left_pad(20, "*") + "\"")
+program.write("Right padded: \"" + original_text.trim().right_pad(20, "-") + "\"")
+program.write("Sliced: \"" + original_text.slice(2, 7) + "\"")
+program.write("Spliced: \"" + original_text.splice(2, 5, "Hi") + "\"")
+
+# Method Chaining Demo  
+chained = "  test  ".trim().left_pad(10, ">").right_pad(15, "<")
+program.write("Chained: \"" + chained + "\"")
+
+# Template Interpolation Demo
+person = {name: "Alice", age: 30, city: "NYC"}
+template = "Hello [name], you are [age] years old and live in [city]!"
+filled = template.fill(person)
+program.write("Template: " + filled)
+
+# Symbol System Demo
+program.write("Currency: " + symbol.dollar + symbol.euro + symbol.pound + symbol.yen)
+program.write("Status: " + symbol.checkmark + " Done " + symbol.xmark + " Failed " + symbol.bullet + " Pending")
+program.write("Business: " + symbol.copyright + " 2024 " + symbol.trademark + " " + symbol.registered)
+program.write("Arrows: " + symbol.arrow_left + symbol.arrow_right + symbol.arrow_up + symbol.arrow_down)
+program.write("Unicode: " + symbol.unicode(8364) + symbol.unicode(8482) + symbol.unicode(9733))

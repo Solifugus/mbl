@@ -1,0 +1,6 @@
+program.write("Hello World!")
+
+say( msg ):
+	program.write( msg )
+
+#say("Functions are functional.")

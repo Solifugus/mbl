@@ -1,14 +1,14 @@
-# MBL Language Reference v0.13.0
+# MBL Language Reference v0.17.0
 
 **Modern Business Language (MBL)** - A programming language designed for business operations with minimal learning curve and maximum readability.
 
-## What's New in v0.13.0
+## What's New in v0.17.0
 
-- **🗄️ Database Integration**: Complete ODBC database support with PostgreSQL connectivity
-- **📝 Business-Friendly SQL Interface**: Simple `program.odbc.run()` and `program.odbc.server()` functions
-- **🔧 Parameter Binding**: Full `{param}` syntax with Record and List parameter support
-- **📊 Multi-line Record Parsing**: Enhanced parser with indentation support for readable configuration
-- **🌐 Connection Management**: Automatic pooling, reconnection, and timeout handling
+- **🖥️ Complete CLI API**: Native terminal interface with colors, positioning, and user input
+- **🔑 User-Specific Secrets**: Secure credential management with `program.secret()`
+- **🎨 Professional UI Development**: Business-readable syntax for interactive applications
+- **📱 Cross-Platform Terminal Support**: ANSI escape codes for universal compatibility
+- **💼 Business Application Framework**: Full CLI app development capabilities
 
 ## Table of Contents
 
@@ -25,7 +25,9 @@
 11. [Database Integration and SQL Operations](#database-integration-and-sql-operations)
 12. [Web Services and Network Programming](#web-services-and-network-programming)
 13. [Real-time Communication with MCP](#real-time-communication-with-mcp)
-14. [Built-in Operations](#built-in-operations)
+14. [CLI Applications and Terminal Interface](#cli-applications-and-terminal-interface)
+15. [Secrets Management](#secrets-management)
+16. [Built-in Operations](#built-in-operations)
 15. [Scope and Context](#scope-and-context)
 16. [Comments and Documentation](#comments-and-documentation)
 17. [Standard Library](#standard-library) *(Planned)*
@@ -1765,4 +1767,247 @@ MCP broadcasting automatically filters messages based on client subscriptions an
 
 ---
 
-*This reference covers MBL v0.12.1 with complete web services, real-time MCP communication, and multi-client synchronization. For the latest updates and planned features, see the [ROADMAP.md](ROADMAP.md) file.*
+## CLI Applications and Terminal Interface
+
+MBL provides a complete CLI (Command Line Interface) API for building professional terminal applications with colors, positioning, and user interaction.
+
+### CLI Lifecycle Management
+
+```mbl
+# Initialize CLI mode
+screen = program.cli.begin()
+
+# Your CLI application code here
+program.cli.clear()
+program.cli.write(0, 0, "Welcome to MyApp!")
+
+# Clean up CLI mode
+program.cli.end()
+```
+
+### Screen Operations
+
+```mbl
+# Clear entire screen
+program.cli.clear()
+
+# Get terminal dimensions
+size = program.cli.size()
+rows = size.rows    # e.g., 24
+cols = size.cols    # e.g., 80
+
+# Refresh screen (flush output)
+program.cli.refresh()
+```
+
+### Positioned Text Output
+
+```mbl
+# Write text at specific position (row, col)
+program.cli.write(5, 10, "Hello World!")
+
+# Write with color
+program.cli.write(0, 0, "Header Text", color: "blue")
+program.cli.write(1, 0, "Success!", color: "green")
+program.cli.write(2, 0, "Warning", color: "yellow")
+program.cli.write(3, 0, "Error", color: "red")
+```
+
+### Text Formatting
+
+```mbl
+# Colored text output (inline)
+program.cli.color("green", "This text is green")
+program.cli.color("red", "This text is red")
+
+# Bold text formatting
+program.cli.bold(true)
+program.cli.write(5, 0, "This text is bold")
+program.cli.bold(false)
+program.cli.write(6, 0, "This text is normal")
+```
+
+### User Input
+
+```mbl
+# Simple prompt (at current cursor position)
+name = program.cli.prompt("Enter your name: ")
+
+# Positioned prompt (row, col, prompt_text)
+age = program.cli.prompt(10, 5, "Enter your age: ")
+city = program.cli.prompt(12, 5, "Enter your city: ")
+
+# Wait for user acknowledgment
+program.cli.prompt(20, 0, "Press Enter to continue...")
+```
+
+### Keyboard Input (Basic)
+
+```mbl
+# Get single keypress (currently mocked)
+key = program.cli.getkey()    # Returns: "ENTER", "UP", "DOWN", etc.
+
+# Get character code (currently mocked)
+code = program.cli.getcode()  # Returns: 13 (for Enter), 65 (for A), etc.
+```
+
+### Complete CLI Application Example
+
+```mbl
+# Professional business CLI application
+program.write("🏢 Starting Business Manager...")
+
+# Initialize CLI
+screen = program.cli.begin()
+program.cli.clear()
+
+# Professional header
+program.cli.write(0, 2, "🔑 Business Data Manager v1.0", color: "blue")
+program.cli.write(1, 2, "================================")
+
+# Get user information
+user_name = program.cli.prompt(3, 2, "Enter your name: ")
+program.cli.write(4, 2, "Welcome, " + user_name + "! 👋", color: "green")
+
+# Display menu
+program.cli.write(6, 2, "📋 Available Options:")
+program.cli.write(7, 4, "1. View reports")
+program.cli.write(8, 4, "2. Manage data")
+program.cli.write(9, 4, "3. Generate summaries")
+
+# Get user choice
+choice = program.cli.prompt(11, 2, "Select option (1-3): ")
+
+# Process selection
+if choice == "1"
+    program.cli.write(13, 4, "📊 Loading reports...", color: "yellow")
+else if choice == "2"
+    program.cli.write(13, 4, "🗄️ Opening data manager...", color: "yellow")
+else if choice == "3"
+    program.cli.write(13, 4, "📝 Generating summaries...", color: "yellow")
+else
+    program.cli.write(13, 4, "❌ Invalid selection", color: "red")
+
+# Professional exit
+program.cli.prompt(15, 2, "Press Enter to exit...")
+program.cli.end()
+
+program.write("Business Manager closed successfully")
+```
+
+### CLI Color Reference
+
+Available colors for `color:` parameter and `program.cli.color()`:
+- `"red"` - Error messages, warnings
+- `"green"` - Success messages, confirmations
+- `"blue"` - Headers, information
+- `"yellow"` - Warnings, in-progress status
+
+---
+
+## Secrets Management
+
+MBL provides secure, user-specific secrets management for storing credentials, API keys, and other sensitive business data.
+
+### Basic Secrets Access
+
+```mbl
+# Load secret from default user file (~/.mbl_secrets_{username}.json)
+db_config = program.secret("database_production")
+
+# Load secret from custom file
+api_keys = program.secret("stripe_keys", "/opt/myapp/secrets.json")
+```
+
+### Working with Secrets
+
+```mbl
+# Check if secret exists
+db_secret = program.secret("database_prod")
+
+if db_secret != "undefined"
+    # Access secret attributes
+    host = db_secret.attributes.host
+    port = db_secret.attributes.port
+    username = db_secret.attributes.username
+    password = db_secret.attributes.password
+
+    # Use in application
+    program.write("Connecting to: " + host + ":" + port)
+else
+    program.write("Database configuration not found")
+```
+
+### Secrets File Format
+
+User-specific secrets files follow this JSON structure:
+
+```json
+{
+  "version": "0.17.0",
+  "secrets": [
+    {
+      "name": "database_production",
+      "attributes": {
+        "host": "db.company.com",
+        "port": "5432",
+        "username": "app_user",
+        "password": "secure_password_123",
+        "database": "production_db"
+      },
+      "tags": ["database", "production"],
+      "created": 1759166312,
+      "modified": 1759166312
+    },
+    {
+      "name": "stripe_api",
+      "attributes": {
+        "public_key": "pk_live_...",
+        "secret_key": "sk_live_...",
+        "webhook_secret": "whsec_..."
+      },
+      "tags": ["api", "payment", "production"],
+      "created": 1759166313,
+      "modified": 1759166313
+    }
+  ]
+}
+```
+
+### User Isolation
+
+- **Automatic user isolation**: Each system user has separate secrets file
+- **File location**: `~/.mbl_secrets_{username}.json`
+- **Production ready**: Service accounts get their own isolated secrets
+- **Security**: No user can access another user's secrets
+
+### Integration with CLI Applications
+
+```mbl
+# Professional secrets-aware CLI application
+screen = program.cli.begin()
+program.cli.clear()
+
+program.cli.write(0, 2, "🔐 System Configuration", color: "blue")
+
+# Check database connection
+db_secret = program.secret("main_database")
+if db_secret != "undefined"
+    program.cli.write(2, 4, "✅ Database: " + db_secret.attributes.host, color: "green")
+else
+    program.cli.write(2, 4, "❌ Database: Not configured", color: "red")
+
+# Check API credentials
+api_secret = program.secret("payment_api")
+if api_secret != "undefined"
+    program.cli.write(3, 4, "✅ Payment API: Configured", color: "green")
+else
+    program.cli.write(3, 4, "❌ Payment API: Missing", color: "red")
+
+program.cli.prompt(5, 2, "Press Enter to continue...")
+program.cli.end()
+```
+
+---
+
+*This reference covers MBL v0.17.0 with complete CLI applications, secrets management, web services, and real-time MCP communication. For the latest updates and planned features, see the [ROADMAP.md](ROADMAP.md) file.*

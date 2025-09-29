@@ -1,0 +1,4 @@
+program.write("Testing basic functionality...")
+program.write("Trim: \"" + "  hello  ".trim() + "\"")
+program.write("Symbols: " + symbol.dollar + " " + symbol.checkmark)
+program.write("Unicode Euro: " + symbol.unicode(8364))
