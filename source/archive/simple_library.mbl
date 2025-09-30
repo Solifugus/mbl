@@ -1,3 +1,0 @@
-# Simple library for testing
-test_var = "Hello from library"
-program.write("Library loaded and executed")

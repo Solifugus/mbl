@@ -108,7 +108,7 @@
 - [x] **Health Monitoring**: Server status tracking and reporting
 - [x] **Signal Handling**: Professional process lifecycle management
 
-## ✅ v0.17.0 - CLI Extensions & Native Secrets (COMPLETE)
+## ✅ v0.17.0 - CLI Extensions & Encrypted Secrets (COMPLETE)
 - [x] **Complete CLI API**: Native terminal interface capabilities
   - [x] `program.cli.begin()` / `program.cli.end()` - CLI lifecycle management
   - [x] `program.cli.clear()` - Screen clearing
@@ -120,44 +120,43 @@
   - [x] `program.cli.prompt(row, col, "Enter name: ")` - Positioned prompts
   - [x] `program.cli.getkey()` / `program.cli.getcode()` - Key handling (mocked)
   - [x] `program.cli.refresh()` - Screen refresh
-- [x] **User-Specific Secrets Management**: Secure, isolated credential storage
-  - [x] `program.secret("name")` - Load secrets from user-specific files
-  - [x] `program.secret("name", "/custom/path")` - Custom secrets file location
-  - [x] User isolation: `~/.mbl_secrets_{username}.json` file structure
-  - [x] JSON-based storage with encryption-ready architecture
-  - [x] Attribute-based secret organization (flexible key-value pairs)
+- [x] **Encrypted Secrets Management**: Military-grade credential protection
+  - [x] `program.secret("name")` - Read encrypted secrets
+  - [x] `program.secret_write("name", {attributes})` - Write/update secrets
+  - [x] `program.secret_delete("name")` - Delete secrets
+  - [x] AES-256-GCM encryption with authenticated encryption
+  - [x] Argon2id key derivation (64MB memory, 3 iterations)
+  - [x] System salt + per-file salt architecture
+  - [x] User isolation: `~/.mbl_secrets.json` per-user encryption
+  - [x] Automatic migration from unencrypted files
+  - [x] Custom file path support for team/shared secrets
 - [x] **Professional Business Applications**: Full CLI app development
   - [x] Interactive forms and menus
   - [x] Colored, positioned terminal output
   - [x] Business-readable syntax for UI logic
   - [x] Cross-platform terminal compatibility (ANSI escape codes)
 
-## 🎯 v0.18.0 - File Operations & Advanced I/O (PLANNED)
-- [ ] **Advanced File Operations**: Enterprise file handling
-  - [ ] Directory traversal and manipulation
-  - [ ] File permissions and metadata access
-  - [ ] Batch file operations
-  - [ ] File watching and monitoring
-- [ ] **SFTP/SCP Operations**: Remote file access
-  - [ ] Secure file transfer protocols
-  - [ ] Remote directory operations
-  - [ ] Key-based authentication
-- [ ] **Advanced CSV/Excel Operations**: Business data processing
-  - [ ] Excel file (.xlsx) reading and writing
-  - [ ] Advanced CSV formatting and validation
-  - [ ] Data transformation and filtering
+## ✅ v0.18.0 - File Operations & Advanced I/O (COMPLETE)
+- [x] **Advanced File Operations**: Enterprise file handling
+  - [x] `program.dir_list(path)` - List directory contents with file/directory types
+  - [x] `program.dir_create(path)` - Create new directories
+  - [x] `program.dir_delete(path)` - Delete empty directories
+  - [x] `program.dir_exists(path)` - Check if directory exists
+  - [x] `program.file_exists(path)` - Check if file exists
+  - [x] `program.file_copy(source, dest)` - Copy files
+  - [x] `program.file_move(source, dest)` - Move/rename files
+  - [x] `program.file_delete(path)` - Delete files
+  - [x] `program.file_info(path)` - Get file metadata (size, type, modified time)
+  - [x] Batch operations through loops
+  - [x] Business file management patterns
 
-## 🚀 v0.19.0 - Enhanced Secrets & Security (PLANNED)
-- [ ] **Advanced Secrets Management**: Enterprise-grade credential handling
-  - [ ] Secrets encryption at rest
-  - [ ] Master password/key management
-  - [ ] Secrets sharing and team collaboration
-  - [ ] Audit logging for secrets access
-- [ ] **Professional Secrets UI**: Advanced CLI interface
-  - [ ] Multi-panel secrets browser
+## 🚀 v0.19.0 - Secrets CLI & Advanced Security (PLANNED)
+- [ ] **Secrets Management CLI**: Interactive secrets management
+  - [ ] `mbl-secrets` CLI tool for managing encrypted secrets
+  - [ ] Add/edit/delete secrets with validation
+  - [ ] Import/export secrets (encrypted)
   - [ ] Tag-based organization and filtering
   - [ ] Search and categorization
-  - [ ] Bulk operations
 
 ## 🏆 v1.0.0 - Production Ready (PLANNED)
 - [ ] **Professional Installation**: Linux package management
@@ -182,12 +181,13 @@
 
 ## 🔧 Current Status Summary
 
-**MBL v0.17.0** is a **complete business programming language** featuring:
+**MBL v0.18.0** is a **complete business programming language** featuring:
 
 ### **Core Language Features**
 - **Complete syntax**: Variables, functions, loops, conditions, data types
 - **Business data types**: Money, Time, Records, Lists with intuitive operations
 - **Advanced I/O**: File operations, CSV/JSON processing, HTTP client/server
+- **File system operations**: Directory management, file metadata, batch operations
 - **Database integration**: ODBC support for enterprise databases
 - **Real-time communication**: MCP protocol for AI/LLM integration
 
@@ -198,9 +198,11 @@
 - **User-friendly syntax**: Business-readable CLI application code
 
 ### **Enterprise Security**
-- **User-specific secrets**: Isolated credential storage per system user
-- **Flexible secret organization**: Attribute-based storage (host, port, username, etc.)
-- **Production-ready architecture**: Service accounts, team collaboration ready
+- **Encrypted secrets management**: AES-256-GCM with Argon2id key derivation
+- **User-isolated encryption**: Each user has unique encryption key
+- **Military-grade protection**: System + per-file salt architecture
+- **Authenticated encryption**: Prevents tampering and unauthorized modifications
+- **Zero-trust design**: Secrets cannot be decrypted without proper credentials
 
 ### **Installation & Usage**
 ```bash
@@ -214,4 +216,4 @@ mbl business_app.mbl
 mbl interactive_tool.mbl
 ```
 
-**MBL combines** the readability of Python, the business focus of COBOL, and the performance of compiled languages—making it **ideal for business automation, data processing, web services, and professional CLI applications**.
+**MBL combines** the readability of Python, the business focus of COBOL, and the performance of compiled languages—making it **ideal for business automation, file management, data processing, web services, and professional CLI applications**.

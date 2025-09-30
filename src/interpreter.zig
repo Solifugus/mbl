@@ -3,6 +3,7 @@ const std = @import("std");
 const memory = @import("memory.zig");
 const parser = @import("parser.zig");
 const odbc = @import("odbc.zig");
+const crypto_module = @import("crypto.zig");
 
 const Memory = memory.Memory;
 const MBLValue = memory.MBLValue;
@@ -1007,6 +1008,40 @@ pub const Interpreter = struct {
                 }
                 if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "secret")) {
                     return try self.handleProgramSecret(call_expr.arguments);
+                }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "secret_write")) {
+                    return try self.handleProgramSecretWrite(call_expr.arguments);
+                }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "secret_delete")) {
+                    return try self.handleProgramSecretDelete(call_expr.arguments);
+                }
+                // File and directory operations
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "dir_list")) {
+                    return try self.handleProgramDirList(call_expr.arguments);
+                }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "dir_create")) {
+                    return try self.handleProgramDirCreate(call_expr.arguments);
+                }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "dir_delete")) {
+                    return try self.handleProgramDirDelete(call_expr.arguments);
+                }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "dir_exists")) {
+                    return try self.handleProgramDirExists(call_expr.arguments);
+                }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "file_exists")) {
+                    return try self.handleProgramFileExists(call_expr.arguments);
+                }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "file_delete")) {
+                    return try self.handleProgramFileDelete(call_expr.arguments);
+                }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "file_copy")) {
+                    return try self.handleProgramFileCopy(call_expr.arguments);
+                }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "file_move")) {
+                    return try self.handleProgramFileMove(call_expr.arguments);
+                }
+                if (std.mem.eql(u8, obj_name, "program") and std.mem.eql(u8, method_name, "file_info")) {
+                    return try self.handleProgramFileInfo(call_expr.arguments);
                 }
                 if (std.mem.eql(u8, obj_name, "symbol") and std.mem.eql(u8, method_name, "unicode")) {
                     return try self.handleSymbolUnicode(call_expr.arguments);
@@ -4087,17 +4122,76 @@ pub const Interpreter = struct {
         }
     }
 
+    // Load system salt from config file
+    fn loadSystemSalt(self: *Interpreter) ![]u8 {
+        // Try system-wide config first
+        const system_conf = "/etc/mbl/mbl.conf";
+
+        // First try system config
+        const file = std.fs.openFileAbsolute(system_conf, .{}) catch |sys_err| blk: {
+            if (sys_err != error.FileNotFound and sys_err != error.AccessDenied) return sys_err;
+
+            // Fall back to user config
+            const user_conf_path = try std.fmt.allocPrint(
+                self.allocator,
+                "{s}/.config/mbl/mbl.conf",
+                .{std.os.getenv("HOME") orelse "/tmp"},
+            );
+            defer self.allocator.free(user_conf_path);
+
+            break :blk try std.fs.openFileAbsolute(user_conf_path, .{});
+        };
+        defer file.close();
+
+        const content = try file.readToEndAlloc(self.allocator, 1024);
+        defer self.allocator.free(content);
+
+        // Parse config: system_salt=BASE64STRING
+        var lines = std.mem.split(u8, content, "\n");
+        while (lines.next()) |line| {
+            if (std.mem.startsWith(u8, line, "system_salt=")) {
+                const salt_b64 = std.mem.trim(u8, line[12..], " \t\r\n");
+                // Decode base64 salt
+                var decoder = std.base64.standard.Decoder;
+                const decoded_size = try decoder.calcSizeForSlice(salt_b64);
+                const salt = try self.allocator.alloc(u8, decoded_size);
+                try decoder.decode(salt, salt_b64);
+                return salt;
+            }
+        }
+
+        return error.SaltNotFound;
+    }
+
+    // Derive encryption key from system salt and username
+    fn deriveEncryptionKey(self: *Interpreter, per_file_salt: []const u8) ![]u8 {
+        const system_salt = try self.loadSystemSalt();
+        defer self.allocator.free(system_salt);
+
+        const username = std.os.getenv("USER") orelse "unknown";
+
+        // password = system_salt + username
+        const password = try std.fmt.allocPrint(
+            self.allocator,
+            "{s}{s}",
+            .{ system_salt, username },
+        );
+        defer self.allocator.free(password);
+
+        // Derive key using Argon2id
+        return crypto_module.deriveKey(self.allocator, password, per_file_salt);
+    }
+
     // User-specific encrypted secrets support
     fn loadUserSecret(self: *Interpreter, name: []const u8, custom_path: ?[]const u8) anyerror!MBLValue {
-        const user_name = std.os.getenv("USER") orelse "unknown";
-
-        // Create user-specific secrets file path
-        const secrets_path = if (custom_path) |path|
-            path
-        else blk: {
+        // Create secrets file path
+        const secrets_path_owned = if (custom_path == null) blk: {
             const home_path = std.os.getenv("HOME") orelse "/tmp";
-            break :blk try std.fmt.allocPrint(self.allocator, "{s}/.mbl_secrets_{s}.json", .{ home_path, user_name });
-        };
+            break :blk try std.fmt.allocPrint(self.allocator, "{s}/.mbl_secrets.json", .{home_path});
+        } else null;
+        defer if (secrets_path_owned) |path| self.allocator.free(path);
+
+        const secrets_path = custom_path orelse secrets_path_owned.?;
 
         // Try to load and decrypt secrets file
         const file = std.fs.openFileAbsolute(secrets_path, .{}) catch |err| {
@@ -4109,12 +4203,42 @@ pub const Interpreter = struct {
         };
         defer file.close();
 
-        // Read file content (simplified - in real implementation would decrypt)
+        // Read file content
         const content = try file.readToEndAlloc(self.allocator, 1024 * 1024); // 1MB max
         defer self.allocator.free(content);
 
-        // Parse JSON (simplified implementation)
-        const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, content, .{}) catch {
+        // Check if file is encrypted (has header with salt)
+        const decrypted_json = if (std.mem.startsWith(u8, content, "MBL_ENCRYPTED_V1:")) blk: {
+            // Extract salt from header: MBL_ENCRYPTED_V1:HEX_SALT:ENCRYPTED_DATA
+            var parts = std.mem.split(u8, content, ":");
+            _ = parts.next(); // Skip "MBL_ENCRYPTED_V1"
+            const salt_hex = parts.next() orelse return error.InvalidFormat;
+            const encrypted_data_hex = parts.rest();
+
+            // Decode hex salt
+            const per_file_salt = try crypto_module.fromHex(self.allocator, salt_hex);
+            defer self.allocator.free(per_file_salt);
+
+            // Derive encryption key
+            const key = try self.deriveEncryptionKey(per_file_salt);
+            defer self.allocator.free(key);
+
+            // Decode hex encrypted data
+            const encrypted_data = try crypto_module.fromHex(self.allocator, encrypted_data_hex);
+            defer self.allocator.free(encrypted_data);
+
+            // Decrypt
+            const decrypted = try crypto_module.decrypt(self.allocator, encrypted_data, key);
+            break :blk decrypted;
+        } else blk: {
+            // Legacy unencrypted format
+            const copy = try self.allocator.dupe(u8, content);
+            break :blk copy;
+        };
+        defer self.allocator.free(decrypted_json);
+
+        // Parse JSON
+        const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, decrypted_json, .{}) catch {
             return MBLValue{ .text = try memory.Text.init(self.allocator, "Error parsing secrets file") };
         };
         defer parsed.deinit();
@@ -4141,7 +4265,7 @@ pub const Interpreter = struct {
                             try secret_record.data.put("attributes", MBLValue{ .record = attrs_record });
                         }
 
-                        std.log.info("🔑 Secret '{s}' loaded for user '{s}'", .{ name, user_name });
+                        std.log.info("🔑 Secret '{s}' loaded", .{name});
                         return MBLValue{ .record = secret_record };
                     }
                 }
@@ -4150,6 +4274,613 @@ pub const Interpreter = struct {
 
         std.log.warn("🔑 Secret '{s}' not found", .{name});
         return MBLValue{ .text = try memory.Text.init(self.allocator, "undefined") };
+    }
+
+    // Write/update a secret
+    fn handleProgramSecretWrite(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len < 2 or arguments.len > 3) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "program.secret_write() requires 2 or 3 arguments: name, attributes, optional file_path") };
+        }
+
+        const name_value = try self.evaluateExpression(arguments[0]);
+        const name = switch (name_value) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "Secret name must be text") };
+            },
+        };
+
+        const attributes_value = try self.evaluateExpression(arguments[1]);
+        const attributes = switch (attributes_value) {
+            .record => |record| record,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "Secret attributes must be a record") };
+            },
+        };
+
+        // Get optional custom file path
+        var file_path: ?[]const u8 = null;
+        if (arguments.len > 2) {
+            const path_value = try self.evaluateExpression(arguments[2]);
+            file_path = switch (path_value) {
+                .text => |text| text.data,
+                else => {
+                    return MBLValue{ .text = try memory.Text.init(self.allocator, "Secret file path must be text") };
+                },
+            };
+        }
+
+        return try self.writeUserSecret(name, attributes, file_path);
+    }
+
+    // Delete a secret
+    fn handleProgramSecretDelete(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len < 1 or arguments.len > 2) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "program.secret_delete() requires 1 or 2 arguments: name and optional file_path") };
+        }
+
+        const name_value = try self.evaluateExpression(arguments[0]);
+        const name = switch (name_value) {
+            .text => |text| text.data,
+            else => {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "Secret name must be text") };
+            },
+        };
+
+        // Get optional custom file path
+        var file_path: ?[]const u8 = null;
+        if (arguments.len > 1) {
+            const path_value = try self.evaluateExpression(arguments[1]);
+            file_path = switch (path_value) {
+                .text => |text| text.data,
+                else => {
+                    return MBLValue{ .text = try memory.Text.init(self.allocator, "Secret file path must be text") };
+                },
+            };
+        }
+
+        return try self.deleteUserSecret(name, file_path);
+    }
+
+    // Write/update secret implementation
+    fn writeUserSecret(self: *Interpreter, name: []const u8, attributes: memory.Record, custom_path: ?[]const u8) anyerror!MBLValue {
+        // Create secrets file path
+        const secrets_path_owned = if (custom_path == null) blk: {
+            const home_path = std.os.getenv("HOME") orelse "/tmp";
+            break :blk try std.fmt.allocPrint(self.allocator, "{s}/.mbl_secrets.json", .{home_path});
+        } else null;
+        defer if (secrets_path_owned) |path| self.allocator.free(path);
+
+        const secrets_path = custom_path orelse secrets_path_owned.?;
+
+        // Load existing secrets file or create new structure
+        // Also extract per-file salt if it exists
+        var per_file_salt: ?[]u8 = null;
+        var existing_json: std.json.Parsed(std.json.Value) = blk: {
+            const file = std.fs.openFileAbsolute(secrets_path, .{}) catch |err| {
+                if (err == error.FileNotFound) {
+                    // Create new file structure
+                    const empty_json = "{\"version\": \"0.17.0\", \"secrets\": []}";
+                    break :blk try std.json.parseFromSlice(std.json.Value, self.allocator, empty_json, .{});
+                }
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "Error accessing secrets file") };
+            };
+            defer file.close();
+
+            const content = try file.readToEndAlloc(self.allocator, 1024 * 1024);
+            defer self.allocator.free(content);
+
+            // Check if encrypted and extract decrypted JSON + salt
+            const decrypted_json = if (std.mem.startsWith(u8, content, "MBL_ENCRYPTED_V1:")) dec_blk: {
+                var parts = std.mem.split(u8, content, ":");
+                _ = parts.next(); // Skip "MBL_ENCRYPTED_V1"
+                const salt_hex = parts.next() orelse return error.InvalidFormat;
+                const encrypted_data_hex = parts.rest();
+
+                // Decode and save per-file salt for reuse
+                per_file_salt = try crypto_module.fromHex(self.allocator, salt_hex);
+
+                // Derive encryption key
+                const key = try self.deriveEncryptionKey(per_file_salt.?);
+                defer self.allocator.free(key);
+
+                // Decode hex encrypted data
+                const encrypted_data = try crypto_module.fromHex(self.allocator, encrypted_data_hex);
+                defer self.allocator.free(encrypted_data);
+
+                // Decrypt
+                const decrypted = try crypto_module.decrypt(self.allocator, encrypted_data, key);
+                break :dec_blk decrypted;
+            } else dec_blk: {
+                const copy = try self.allocator.dupe(u8, content);
+                break :dec_blk copy;
+            };
+            defer self.allocator.free(decrypted_json);
+
+            break :blk std.json.parseFromSlice(std.json.Value, self.allocator, decrypted_json, .{}) catch {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "Error parsing existing secrets file") };
+            };
+        };
+        defer existing_json.deinit();
+        defer if (per_file_salt) |salt| self.allocator.free(salt);
+
+        // Create new secret object
+        var new_secret = std.json.ObjectMap.init(self.allocator);
+        try new_secret.put("name", std.json.Value{ .string = name });
+
+        // Convert MBL Record attributes to JSON
+        var json_attributes = std.json.ObjectMap.init(self.allocator);
+        var attr_iter = attributes.data.iterator();
+        while (attr_iter.next()) |entry| {
+            const value_str = switch (entry.value_ptr.*) {
+                .text => |text| text.data,
+                .number => |num| try std.fmt.allocPrint(self.allocator, "{d}", .{num.value}),
+                .boolean => |boolean_val| if (boolean_val.value) "true" else "false",
+                else => "unknown",
+            };
+            try json_attributes.put(entry.key_ptr.*, std.json.Value{ .string = value_str });
+        }
+        try new_secret.put("attributes", std.json.Value{ .object = json_attributes });
+
+        // Add timestamp
+        const timestamp = std.time.timestamp();
+        try new_secret.put("created", std.json.Value{ .integer = timestamp });
+        try new_secret.put("modified", std.json.Value{ .integer = timestamp });
+
+        // Get existing secrets array and update or append
+        if (existing_json.value.object.getPtr("secrets")) |secrets_array| {
+            var found = false;
+            // Try to find and update existing secret
+            for (secrets_array.array.items) |*secret_item| {
+                if (secret_item.object.get("name")) |secret_name| {
+                    if (std.mem.eql(u8, secret_name.string, name)) {
+                        // Update existing secret
+                        secret_item.* = std.json.Value{ .object = new_secret };
+                        try new_secret.put("created", secret_item.object.get("created") orelse std.json.Value{ .integer = timestamp });
+                        found = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!found) {
+                // Append new secret
+                try secrets_array.array.append(std.json.Value{ .object = new_secret });
+            }
+        }
+
+        // Write updated JSON back to file (encrypted)
+        const output_file = std.fs.createFileAbsolute(secrets_path, .{}) catch {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "Error creating/updating secrets file") };
+        };
+        defer output_file.close();
+
+        const json_string = try std.json.stringifyAlloc(self.allocator, existing_json.value, .{ .whitespace = .indent_2 });
+        defer self.allocator.free(json_string);
+
+        // Generate or reuse per-file salt
+        const salt_to_use = if (per_file_salt) |existing_salt|
+            try self.allocator.dupe(u8, existing_salt)
+        else
+            try crypto_module.generateSalt(self.allocator);
+        defer self.allocator.free(salt_to_use);
+
+        // Derive encryption key
+        const key = try self.deriveEncryptionKey(salt_to_use);
+        defer self.allocator.free(key);
+
+        // Encrypt JSON data
+        const encrypted_data = try crypto_module.encrypt(self.allocator, json_string, key);
+        defer self.allocator.free(encrypted_data);
+
+        // Convert to hex for storage
+        const salt_hex = try crypto_module.toHex(self.allocator, salt_to_use);
+        defer self.allocator.free(salt_hex);
+
+        const encrypted_hex = try crypto_module.toHex(self.allocator, encrypted_data);
+        defer self.allocator.free(encrypted_hex);
+
+        // Write in format: MBL_ENCRYPTED_V1:SALT_HEX:ENCRYPTED_DATA_HEX
+        const final_output = try std.fmt.allocPrint(
+            self.allocator,
+            "MBL_ENCRYPTED_V1:{s}:{s}",
+            .{ salt_hex, encrypted_hex },
+        );
+        defer self.allocator.free(final_output);
+
+        output_file.writeAll(final_output) catch {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "Error writing secrets file") };
+        };
+
+        std.log.info("🔑 Secret '{s}' written (encrypted)", .{name});
+        return MBLValue{ .boolean = memory.Boolean.init(true) };
+    }
+
+    // Delete secret implementation
+    fn deleteUserSecret(self: *Interpreter, name: []const u8, custom_path: ?[]const u8) anyerror!MBLValue {
+        // Create secrets file path
+        const secrets_path_owned = if (custom_path == null) blk: {
+            const home_path = std.os.getenv("HOME") orelse "/tmp";
+            break :blk try std.fmt.allocPrint(self.allocator, "{s}/.mbl_secrets.json", .{home_path});
+        } else null;
+        defer if (secrets_path_owned) |path| self.allocator.free(path);
+
+        const secrets_path = custom_path orelse secrets_path_owned.?;
+
+        // Load existing secrets file and decrypt if needed
+        var per_file_salt: ?[]u8 = null;
+        var existing_json: std.json.Parsed(std.json.Value) = blk: {
+            const file = std.fs.openFileAbsolute(secrets_path, .{}) catch |err| {
+                if (err == error.FileNotFound) {
+                    return MBLValue{ .boolean = memory.Boolean.init(false) }; // File doesn't exist, nothing to delete
+                }
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "Error accessing secrets file") };
+            };
+            defer file.close();
+
+            const content = try file.readToEndAlloc(self.allocator, 1024 * 1024);
+            defer self.allocator.free(content);
+
+            // Check if encrypted and decrypt
+            const decrypted_json = if (std.mem.startsWith(u8, content, "MBL_ENCRYPTED_V1:")) dec_blk: {
+                var parts = std.mem.split(u8, content, ":");
+                _ = parts.next(); // Skip "MBL_ENCRYPTED_V1"
+                const salt_hex = parts.next() orelse return error.InvalidFormat;
+                const encrypted_data_hex = parts.rest();
+
+                // Decode and save per-file salt for reuse
+                per_file_salt = try crypto_module.fromHex(self.allocator, salt_hex);
+
+                // Derive encryption key
+                const key = try self.deriveEncryptionKey(per_file_salt.?);
+                defer self.allocator.free(key);
+
+                // Decode hex encrypted data
+                const encrypted_data = try crypto_module.fromHex(self.allocator, encrypted_data_hex);
+                defer self.allocator.free(encrypted_data);
+
+                // Decrypt
+                const decrypted = try crypto_module.decrypt(self.allocator, encrypted_data, key);
+                break :dec_blk decrypted;
+            } else dec_blk: {
+                const copy = try self.allocator.dupe(u8, content);
+                break :dec_blk copy;
+            };
+            defer self.allocator.free(decrypted_json);
+
+            break :blk std.json.parseFromSlice(std.json.Value, self.allocator, decrypted_json, .{}) catch {
+                return MBLValue{ .text = try memory.Text.init(self.allocator, "Error parsing secrets file") };
+            };
+        };
+        defer existing_json.deinit();
+        defer if (per_file_salt) |salt| self.allocator.free(salt);
+
+        // Find and remove secret from array
+        if (existing_json.value.object.getPtr("secrets")) |secrets_array| {
+            var i: usize = 0;
+            var found = false;
+            while (i < secrets_array.array.items.len) {
+                if (secrets_array.array.items[i].object.get("name")) |secret_name| {
+                    if (std.mem.eql(u8, secret_name.string, name)) {
+                        _ = secrets_array.array.orderedRemove(i);
+                        found = true;
+                        break;
+                    }
+                }
+                i += 1;
+            }
+
+            if (!found) {
+                return MBLValue{ .boolean = memory.Boolean.init(false) }; // Secret not found
+            }
+        } else {
+            return MBLValue{ .boolean = memory.Boolean.init(false) }; // No secrets array
+        }
+
+        // Write updated JSON back to file (encrypted)
+        const output_file = std.fs.createFileAbsolute(secrets_path, .{}) catch {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "Error updating secrets file") };
+        };
+        defer output_file.close();
+
+        const json_string = try std.json.stringifyAlloc(self.allocator, existing_json.value, .{ .whitespace = .indent_2 });
+        defer self.allocator.free(json_string);
+
+        // Use existing salt or generate new one
+        const salt_to_use = if (per_file_salt) |existing_salt|
+            try self.allocator.dupe(u8, existing_salt)
+        else
+            try crypto_module.generateSalt(self.allocator);
+        defer self.allocator.free(salt_to_use);
+
+        // Derive encryption key
+        const key = try self.deriveEncryptionKey(salt_to_use);
+        defer self.allocator.free(key);
+
+        // Encrypt JSON data
+        const encrypted_data = try crypto_module.encrypt(self.allocator, json_string, key);
+        defer self.allocator.free(encrypted_data);
+
+        // Convert to hex for storage
+        const salt_hex = try crypto_module.toHex(self.allocator, salt_to_use);
+        defer self.allocator.free(salt_hex);
+
+        const encrypted_hex = try crypto_module.toHex(self.allocator, encrypted_data);
+        defer self.allocator.free(encrypted_hex);
+
+        // Write in format: MBL_ENCRYPTED_V1:SALT_HEX:ENCRYPTED_DATA_HEX
+        const final_output = try std.fmt.allocPrint(
+            self.allocator,
+            "MBL_ENCRYPTED_V1:{s}:{s}",
+            .{ salt_hex, encrypted_hex },
+        );
+        defer self.allocator.free(final_output);
+
+        output_file.writeAll(final_output) catch {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "Error writing secrets file") };
+        };
+
+        std.log.info("🔑 Secret '{s}' deleted (re-encrypted)", .{name});
+        return MBLValue{ .boolean = memory.Boolean.init(true) };
+    }
+
+    // ========================================================================
+    // FILE AND DIRECTORY OPERATIONS (v0.18.0)
+    // ========================================================================
+
+    // List directory contents
+    fn handleProgramDirList(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len != 1) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "program.dir_list() requires 1 argument: directory path") };
+        }
+
+        const path_value = try self.evaluateExpression(arguments[0]);
+        const path = switch (path_value) {
+            .text => |text| text.data,
+            else => return MBLValue{ .text = try memory.Text.init(self.allocator, "Directory path must be text") },
+        };
+
+        var dir = std.fs.openIterableDirAbsolute(path, .{}) catch |err| {
+            const error_msg = try std.fmt.allocPrint(self.allocator, "Cannot open directory: {s}", .{@errorName(err)});
+            defer self.allocator.free(error_msg);
+            return MBLValue{ .text = try memory.Text.init(self.allocator, error_msg) };
+        };
+        defer dir.close();
+
+        var result_list = memory.List.init(self.allocator);
+        var iterator = dir.iterate();
+
+        while (try iterator.next()) |entry| {
+            // Create record for each entry
+            var entry_record = memory.Record.init(self.allocator);
+
+            // Add name
+            const name_copy = try self.allocator.dupe(u8, entry.name);
+            try entry_record.data.put("name", MBLValue{ .text = try memory.Text.init(self.allocator, name_copy) });
+
+            // Add type
+            const type_str = switch (entry.kind) {
+                .file => "file",
+                .directory => "directory",
+                .sym_link => "symlink",
+                else => "other",
+            };
+            try entry_record.data.put("type", MBLValue{ .text = try memory.Text.init(self.allocator, type_str) });
+
+            try result_list.append(MBLValue{ .record = entry_record });
+        }
+
+        return MBLValue{ .list = result_list };
+    }
+
+    // Create directory
+    fn handleProgramDirCreate(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len != 1) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "program.dir_create() requires 1 argument: directory path") };
+        }
+
+        const path_value = try self.evaluateExpression(arguments[0]);
+        const path = switch (path_value) {
+            .text => |text| text.data,
+            else => return MBLValue{ .text = try memory.Text.init(self.allocator, "Directory path must be text") },
+        };
+
+        std.fs.makeDirAbsolute(path) catch |err| {
+            const error_msg = try std.fmt.allocPrint(self.allocator, "Cannot create directory: {s}", .{@errorName(err)});
+            defer self.allocator.free(error_msg);
+            return MBLValue{ .text = try memory.Text.init(self.allocator, error_msg) };
+        };
+
+        return MBLValue{ .boolean = memory.Boolean.init(true) };
+    }
+
+    // Delete directory
+    fn handleProgramDirDelete(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len != 1) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "program.dir_delete() requires 1 argument: directory path") };
+        }
+
+        const path_value = try self.evaluateExpression(arguments[0]);
+        const path = switch (path_value) {
+            .text => |text| text.data,
+            else => return MBLValue{ .text = try memory.Text.init(self.allocator, "Directory path must be text") },
+        };
+
+        std.fs.deleteDirAbsolute(path) catch |err| {
+            const error_msg = try std.fmt.allocPrint(self.allocator, "Cannot delete directory: {s}", .{@errorName(err)});
+            defer self.allocator.free(error_msg);
+            return MBLValue{ .text = try memory.Text.init(self.allocator, error_msg) };
+        };
+
+        return MBLValue{ .boolean = memory.Boolean.init(true) };
+    }
+
+    // Check if directory exists
+    fn handleProgramDirExists(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len != 1) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "program.dir_exists() requires 1 argument: directory path") };
+        }
+
+        const path_value = try self.evaluateExpression(arguments[0]);
+        const path = switch (path_value) {
+            .text => |text| text.data,
+            else => return MBLValue{ .text = try memory.Text.init(self.allocator, "Directory path must be text") },
+        };
+
+        const exists = blk: {
+            var dir = std.fs.openDirAbsolute(path, .{}) catch {
+                break :blk false;
+            };
+            dir.close();
+            break :blk true;
+        };
+
+        return MBLValue{ .boolean = memory.Boolean.init(exists) };
+    }
+
+    // Check if file exists
+    fn handleProgramFileExists(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len != 1) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "program.file_exists() requires 1 argument: file path") };
+        }
+
+        const path_value = try self.evaluateExpression(arguments[0]);
+        const path = switch (path_value) {
+            .text => |text| text.data,
+            else => return MBLValue{ .text = try memory.Text.init(self.allocator, "File path must be text") },
+        };
+
+        const exists = blk: {
+            const file = std.fs.openFileAbsolute(path, .{}) catch {
+                break :blk false;
+            };
+            file.close();
+            break :blk true;
+        };
+
+        return MBLValue{ .boolean = memory.Boolean.init(exists) };
+    }
+
+    // Delete file
+    fn handleProgramFileDelete(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len != 1) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "program.file_delete() requires 1 argument: file path") };
+        }
+
+        const path_value = try self.evaluateExpression(arguments[0]);
+        const path = switch (path_value) {
+            .text => |text| text.data,
+            else => return MBLValue{ .text = try memory.Text.init(self.allocator, "File path must be text") },
+        };
+
+        std.fs.deleteFileAbsolute(path) catch |err| {
+            const error_msg = try std.fmt.allocPrint(self.allocator, "Cannot delete file: {s}", .{@errorName(err)});
+            defer self.allocator.free(error_msg);
+            return MBLValue{ .text = try memory.Text.init(self.allocator, error_msg) };
+        };
+
+        return MBLValue{ .boolean = memory.Boolean.init(true) };
+    }
+
+    // Copy file
+    fn handleProgramFileCopy(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len != 2) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "program.file_copy() requires 2 arguments: source path, destination path") };
+        }
+
+        const source_value = try self.evaluateExpression(arguments[0]);
+        const source = switch (source_value) {
+            .text => |text| text.data,
+            else => return MBLValue{ .text = try memory.Text.init(self.allocator, "Source path must be text") },
+        };
+
+        const dest_value = try self.evaluateExpression(arguments[1]);
+        const dest = switch (dest_value) {
+            .text => |text| text.data,
+            else => return MBLValue{ .text = try memory.Text.init(self.allocator, "Destination path must be text") },
+        };
+
+        std.fs.copyFileAbsolute(source, dest, .{}) catch |err| {
+            const error_msg = try std.fmt.allocPrint(self.allocator, "Cannot copy file: {s}", .{@errorName(err)});
+            defer self.allocator.free(error_msg);
+            return MBLValue{ .text = try memory.Text.init(self.allocator, error_msg) };
+        };
+
+        return MBLValue{ .boolean = memory.Boolean.init(true) };
+    }
+
+    // Move/rename file
+    fn handleProgramFileMove(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len != 2) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "program.file_move() requires 2 arguments: source path, destination path") };
+        }
+
+        const source_value = try self.evaluateExpression(arguments[0]);
+        const source = switch (source_value) {
+            .text => |text| text.data,
+            else => return MBLValue{ .text = try memory.Text.init(self.allocator, "Source path must be text") },
+        };
+
+        const dest_value = try self.evaluateExpression(arguments[1]);
+        const dest = switch (dest_value) {
+            .text => |text| text.data,
+            else => return MBLValue{ .text = try memory.Text.init(self.allocator, "Destination path must be text") },
+        };
+
+        std.fs.renameAbsolute(source, dest) catch |err| {
+            const error_msg = try std.fmt.allocPrint(self.allocator, "Cannot move file: {s}", .{@errorName(err)});
+            defer self.allocator.free(error_msg);
+            return MBLValue{ .text = try memory.Text.init(self.allocator, error_msg) };
+        };
+
+        return MBLValue{ .boolean = memory.Boolean.init(true) };
+    }
+
+    // Get file information
+    fn handleProgramFileInfo(self: *Interpreter, arguments: []Expression) anyerror!MBLValue {
+        if (arguments.len != 1) {
+            return MBLValue{ .text = try memory.Text.init(self.allocator, "program.file_info() requires 1 argument: file path") };
+        }
+
+        const path_value = try self.evaluateExpression(arguments[0]);
+        const path = switch (path_value) {
+            .text => |text| text.data,
+            else => return MBLValue{ .text = try memory.Text.init(self.allocator, "File path must be text") },
+        };
+
+        const file = std.fs.openFileAbsolute(path, .{}) catch |err| {
+            const error_msg = try std.fmt.allocPrint(self.allocator, "Cannot open file: {s}", .{@errorName(err)});
+            defer self.allocator.free(error_msg);
+            return MBLValue{ .text = try memory.Text.init(self.allocator, error_msg) };
+        };
+        defer file.close();
+
+        const stat = file.stat() catch |err| {
+            const error_msg = try std.fmt.allocPrint(self.allocator, "Cannot get file info: {s}", .{@errorName(err)});
+            defer self.allocator.free(error_msg);
+            return MBLValue{ .text = try memory.Text.init(self.allocator, error_msg) };
+        };
+
+        var info_record = memory.Record.init(self.allocator);
+
+        // Add file size
+        try info_record.data.put("size", MBLValue{ .number = memory.Number.init(@as(f64, @floatFromInt(stat.size))) });
+
+        // Add file type
+        const kind_str = switch (stat.kind) {
+            .file => "file",
+            .directory => "directory",
+            .sym_link => "symlink",
+            else => "other",
+        };
+        try info_record.data.put("type", MBLValue{ .text = try memory.Text.init(self.allocator, kind_str) });
+
+        // Add modification time (Unix timestamp)
+        const mtime_ns = stat.mtime;
+        const mtime_secs = @as(f64, @floatFromInt(mtime_ns)) / 1_000_000_000.0;
+        try info_record.data.put("modified", MBLValue{ .number = memory.Number.init(mtime_secs) });
+
+        return MBLValue{ .record = info_record };
     }
 };
 

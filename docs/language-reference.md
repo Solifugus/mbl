@@ -1,14 +1,23 @@
-# MBL Language Reference v0.17.0
+# MBL Language Reference v0.18.0
 
 **Modern Business Language (MBL)** - A programming language designed for business operations with minimal learning curve and maximum readability.
+
+## What's New in v0.18.0
+
+- **📁 File System Operations**: Complete directory and file management with `program.dir_*()` and `program.file_*()` functions
+- **📊 File Metadata Access**: Get file size, type, and modification times with `program.file_info()`
+- **🗂️ Directory Traversal**: List directory contents with file type information
+- **📂 Batch File Operations**: Copy, move, and organize files programmatically
+- **💼 Business File Management**: Automated backups, file organization, and storage monitoring
 
 ## What's New in v0.17.0
 
 - **🖥️ Complete CLI API**: Native terminal interface with colors, positioning, and user input
-- **🔑 User-Specific Secrets**: Secure credential management with `program.secret()`
+- **🔑 Encrypted Secrets Management**: AES-256-GCM encrypted credential storage with Argon2id key derivation
 - **🎨 Professional UI Development**: Business-readable syntax for interactive applications
 - **📱 Cross-Platform Terminal Support**: ANSI escape codes for universal compatibility
 - **💼 Business Application Framework**: Full CLI app development capabilities
+- **🔐 Military-Grade Encryption**: System + per-file salts with authenticated encryption
 
 ## Table of Contents
 
@@ -26,12 +35,13 @@
 12. [Web Services and Network Programming](#web-services-and-network-programming)
 13. [Real-time Communication with MCP](#real-time-communication-with-mcp)
 14. [CLI Applications and Terminal Interface](#cli-applications-and-terminal-interface)
-15. [Secrets Management](#secrets-management)
-16. [Built-in Operations](#built-in-operations)
-15. [Scope and Context](#scope-and-context)
-16. [Comments and Documentation](#comments-and-documentation)
-17. [Standard Library](#standard-library) *(Planned)*
-18. [Error Handling](#error-handling)
+15. [File System Operations](#file-system-operations)
+16. [Secrets Management](#secrets-management)
+17. [Built-in Operations](#built-in-operations)
+18. [Scope and Context](#scope-and-context)
+19. [Comments and Documentation](#comments-and-documentation)
+20. [Standard Library](#standard-library) *(Planned)*
+21. [Error Handling](#error-handling)
 
 ---
 
@@ -1905,18 +1915,146 @@ Available colors for `color:` parameter and `program.cli.color()`:
 
 ---
 
+## File System Operations
+
+MBL provides comprehensive file and directory operations for managing files, traversing directories, and accessing file metadata.
+
+### Directory Operations
+
+```mbl
+# Check if directory exists
+if program.dir_exists("/path/to/directory")
+    program.write("Directory exists")
+
+# Create directory
+program.dir_create("/path/to/new_directory")
+
+# List directory contents
+entries = program.dir_list("/path/to/directory")
+for entry in entries
+    program.write(entry.name + " - " + entry.type)  # type: "file", "directory", "symlink"
+
+# Delete empty directory
+program.dir_delete("/path/to/directory")
+```
+
+### File Operations
+
+```mbl
+# Check if file exists
+if program.file_exists("/path/to/file.txt")
+    program.write("File exists")
+
+# Copy file
+program.file_copy("/source/file.txt", "/destination/file.txt")
+
+# Move/rename file
+program.file_move("/old/path.txt", "/new/path.txt")
+
+# Delete file
+program.file_delete("/path/to/file.txt")
+```
+
+### File Metadata
+
+```mbl
+# Get file information
+info = program.file_info("/path/to/file.txt")
+
+program.write("Size: " + info.size.text() + " bytes")
+program.write("Type: " + info.type)  # "file", "directory", "symlink"
+program.write("Modified: " + info.modified.text())  # Unix timestamp
+```
+
+### Batch Operations
+
+```mbl
+# Process multiple files
+files = ["file1.txt", "file2.txt", "file3.txt"]
+
+for file in files
+    source = "/source/" + file
+    dest = "/backup/" + file
+    program.file_copy(source, dest)
+
+# Organize files by extension
+entries = program.dir_list("/documents")
+for entry in entries
+    if entry.type = "file"
+        # Move PDFs to separate folder
+        if entry.name.ends_with(".pdf")
+            program.file_move("/documents/" + entry.name, "/documents/pdfs/" + entry.name)
+```
+
+### Business File Management
+
+```mbl
+# Backup important business files
+backup_dir = "/backup/" + program.date.today().text()
+program.dir_create(backup_dir)
+
+files_to_backup = ["invoices.csv", "customers.json", "transactions.csv"]
+for filename in files_to_backup
+    if program.file_exists("/data/" + filename)
+        program.file_copy("/data/" + filename, backup_dir + "/" + filename)
+        program.write("✅ Backed up: " + filename)
+
+# Monitor file sizes
+critical_files = program.dir_list("/data")
+for file in critical_files
+    if file.type = "file"
+        info = program.file_info("/data/" + file.name)
+        if info.size > 1000000  # More than 1MB
+            program.write("⚠️ Large file: " + file.name + " (" + info.size.text() + " bytes)")
+```
+
+---
+
 ## Secrets Management
 
-MBL provides secure, user-specific secrets management for storing credentials, API keys, and other sensitive business data.
+MBL provides encrypted, user-specific secrets management for storing credentials, API keys, and other sensitive business data. All secrets are protected with AES-256-GCM encryption and Argon2id key derivation.
+
+### Encryption System
+
+- **Algorithm**: AES-256-GCM (authenticated encryption)
+- **Key Derivation**: Argon2id with memory-hard parameters (64MB, 3 iterations)
+- **System Salt**: Generated during installation, stored in `/etc/mbl/mbl.conf`
+- **Per-File Salt**: Unique 32-byte salt per secrets file
+- **Automatic**: Encryption is transparent - no code changes needed
 
 ### Basic Secrets Access
 
 ```mbl
-# Load secret from default user file (~/.mbl_secrets_{username}.json)
+# Load secret from default user file (~/.mbl_secrets.json)
 db_config = program.secret("database_production")
 
 # Load secret from custom file
 api_keys = program.secret("stripe_keys", "/opt/myapp/secrets.json")
+```
+
+### Writing Secrets
+
+```mbl
+# Create or update a secret
+result = program.secret_write("database_production", {
+    host: "db.company.com",
+    port: "5432",
+    username: "app_user",
+    password: "secure_password_123"
+})
+
+# Write to custom file
+result = program.secret_write("api_key", {key: "sk_live_..."}, "/custom/path.json")
+```
+
+### Deleting Secrets
+
+```mbl
+# Delete a secret
+result = program.secret_delete("database_production")
+
+# Delete from custom file
+result = program.secret_delete("api_key", "/custom/path.json")
 ```
 
 ### Working with Secrets
@@ -1938,9 +2076,15 @@ else
     program.write("Database configuration not found")
 ```
 
-### Secrets File Format
+### Encrypted File Format
 
-User-specific secrets files follow this JSON structure:
+Secrets files are stored in an encrypted format:
+
+```
+MBL_ENCRYPTED_V1:64_HEX_CHARS_SALT:HEX_ENCRYPTED_DATA
+```
+
+The encrypted data contains JSON in this structure:
 
 ```json
 {
@@ -1955,31 +2099,21 @@ User-specific secrets files follow this JSON structure:
         "password": "secure_password_123",
         "database": "production_db"
       },
-      "tags": ["database", "production"],
       "created": 1759166312,
       "modified": 1759166312
-    },
-    {
-      "name": "stripe_api",
-      "attributes": {
-        "public_key": "pk_live_...",
-        "secret_key": "sk_live_...",
-        "webhook_secret": "whsec_..."
-      },
-      "tags": ["api", "payment", "production"],
-      "created": 1759166313,
-      "modified": 1759166313
     }
   ]
 }
 ```
 
-### User Isolation
+### Security Features
 
-- **Automatic user isolation**: Each system user has separate secrets file
-- **File location**: `~/.mbl_secrets_{username}.json`
-- **Production ready**: Service accounts get their own isolated secrets
-- **Security**: No user can access another user's secrets
+- **Per-User Encryption**: Each user has unique encryption key (system_salt + username)
+- **File Location**: `~/.mbl_secrets.json` (per user home directory)
+- **User Isolation**: Users cannot decrypt other users' secrets files
+- **System-Wide Salt**: Stored in `/etc/mbl/mbl.conf` or `~/.config/mbl/mbl.conf`
+- **Authenticated Encryption**: AES-GCM prevents tampering
+- **Backward Compatible**: Automatically encrypts legacy unencrypted files on first write
 
 ### Integration with CLI Applications
 
@@ -2010,4 +2144,4 @@ program.cli.end()
 
 ---
 
-*This reference covers MBL v0.17.0 with complete CLI applications, secrets management, web services, and real-time MCP communication. For the latest updates and planned features, see the [ROADMAP.md](ROADMAP.md) file.*
+*This reference covers MBL v0.18.0 with complete file system operations, CLI applications, encrypted secrets management, web services, and real-time MCP communication. For the latest updates and planned features, see the [ROADMAP.md](ROADMAP.md) file.*

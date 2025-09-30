@@ -14,7 +14,7 @@ pub fn build(b: *std.Build) void {
     // Create the MBL interpreter executable
     const exe = b.addExecutable(.{
         .name = "mbl",
-        .root_source_file = .{ .path = "mbl_run.zig" },
+        .root_source_file = .{ .path = "../src/main.zig" },
         .target = target,
         .optimize = optimize,
     });
@@ -40,25 +40,25 @@ pub fn build(b: *std.Build) void {
 
     // Create test steps for individual modules
     const lexer_tests = b.addTest(.{
-        .root_source_file = .{ .path = "lexer.zig" },
+        .root_source_file = .{ .path = "../src/lexer.zig" },
         .target = target,
         .optimize = optimize,
     });
 
     const parser_tests = b.addTest(.{
-        .root_source_file = .{ .path = "parser.zig" },
+        .root_source_file = .{ .path = "../src/parser.zig" },
         .target = target,
         .optimize = optimize,
     });
 
     const memory_tests = b.addTest(.{
-        .root_source_file = .{ .path = "memory.zig" },
+        .root_source_file = .{ .path = "../src/memory.zig" },
         .target = target,
         .optimize = optimize,
     });
 
     const interpreter_tests = b.addTest(.{
-        .root_source_file = .{ .path = "interpreter.zig" },
+        .root_source_file = .{ .path = "../src/interpreter.zig" },
         .target = target,
         .optimize = optimize,
     });

@@ -1,4 +1,0 @@
-# Test single iteration
-data = program.import("minimal_test.csv")
-for record in data:
-    break

@@ -28,27 +28,61 @@ print_success "Zig found: $($ZIG_BINARY version)"
 
 # Build MBL
 print_info "Building MBL interpreter..."
-cd "$(dirname "$0")"
-if ! $ZIG_BINARY build-exe mbl_run.zig -O ReleaseFast --name mbl; then
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+cd "$SCRIPT_DIR"
+if ! $ZIG_BINARY build-exe "$PROJECT_ROOT/src/main.zig" -O ReleaseFast --name mbl; then
     print_error "Build failed"
     exit 1
 fi
 print_success "MBL built successfully"
 
+# Generate system salt for encryption
+print_info "Setting up encryption..."
+SYSTEM_SALT=$(head -c 32 /dev/urandom | base64)
+MBL_CONF_DIR="/etc/mbl"
+MBL_CONF_FILE="$MBL_CONF_DIR/mbl.conf"
+
+# Try to create system-wide config
+if sudo mkdir -p "$MBL_CONF_DIR" 2>/dev/null && sudo bash -c "echo 'system_salt=$SYSTEM_SALT' > '$MBL_CONF_FILE'" 2>/dev/null; then
+    sudo chmod 644 "$MBL_CONF_FILE"
+    print_success "System encryption configured: $MBL_CONF_FILE"
+else
+    # Fallback to user-local config
+    MBL_CONF_DIR="$HOME/.config/mbl"
+    MBL_CONF_FILE="$MBL_CONF_DIR/mbl.conf"
+    mkdir -p "$MBL_CONF_DIR"
+    echo "system_salt=$SYSTEM_SALT" > "$MBL_CONF_FILE"
+    chmod 600 "$MBL_CONF_FILE"
+    print_success "User encryption configured: $MBL_CONF_FILE"
+fi
+
 # Install system-wide if possible
 SYSTEM_INSTALLED=false
-for install_dir in "/usr/local/bin" "/opt/mbl/bin"; do
-    if mkdir -p "$install_dir" 2>/dev/null && cp mbl "$install_dir/mbl" 2>/dev/null; then
-        chmod +x "$install_dir/mbl"
-        print_success "Installed to: $install_dir/mbl"
-        SYSTEM_INSTALLED=true
-        break
+
+# Try /opt/mbl first (preferred for v1.0.0)
+if sudo mkdir -p /opt/mbl/bin 2>/dev/null && sudo cp mbl /opt/mbl/bin/mbl 2>/dev/null; then
+    sudo chmod +x /opt/mbl/bin/mbl
+    # Create symlink in /usr/local/bin
+    sudo ln -sf /opt/mbl/bin/mbl /usr/local/bin/mbl 2>/dev/null
+    print_success "Installed to: /opt/mbl/bin/mbl"
+    SYSTEM_INSTALLED=true
+
+    # Copy examples to /opt/mbl/share/examples
+    if [[ -d "$PROJECT_ROOT/examples" ]]; then
+        sudo mkdir -p /opt/mbl/share/examples
+        sudo cp "$PROJECT_ROOT"/examples/*.mbl /opt/mbl/share/examples/ 2>/dev/null
+        print_success "Examples installed to: /opt/mbl/share/examples/"
     fi
-done
+elif mkdir -p "/usr/local/bin" 2>/dev/null && cp mbl "/usr/local/bin/mbl" 2>/dev/null; then
+    chmod +x "/usr/local/bin/mbl"
+    print_success "Installed to: /usr/local/bin/mbl"
+    SYSTEM_INSTALLED=true
+fi
 
 # Create sample secrets file
-USER_NAME=$(whoami)
-SECRETS_FILE="$HOME/.mbl_secrets_${USER_NAME}.json"
+SECRETS_FILE="$HOME/.mbl_secrets.json"
 if [[ ! -f "$SECRETS_FILE" ]]; then
     cat > "$SECRETS_FILE" << 'EOF'
 {

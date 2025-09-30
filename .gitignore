@@ -1,10 +1,69 @@
-# Python
+# MBL Build artifacts
+*.o
+*.a
+mbl
+interpreter
+zig-cache/
+zig-out/
+source/zig-cache/
+source/zig-out/
+
+# Compiled binaries
+/build/mbl
+/src/mbl
+/source/mbl
+/source/interpreter
+
+# Test output
+test-output/
+*.test
+
+# User secrets (encrypted, but shouldn't be in repo)
+.mbl_secrets*.json
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+/var/log/mbl/
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+
+# Debian packaging artifacts
+/debian/*.debhelper
+/debian/*.substvars
+/debian/files
+/debian/.debhelper/
+/debian/mbl/
+
+# Archives
+*.tar.gz
+*.zip
+*.deb
+
+# Config (system-specific)
+/etc/mbl/mbl.conf
+~/.config/mbl/mbl.conf
+
+# Claude artifacts
+.claude/
+
+# Python (legacy, keeping for compatibility)
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-build/
 develop-eggs/
 dist/
 downloads/
@@ -24,13 +83,3 @@ wheels/
 venv/
 env/
 ENV/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db 

@@ -1,2 +1,0 @@
-# Minimal CSV test
-data = program.import("minimal_test.csv")

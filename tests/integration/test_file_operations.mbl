@@ -1,0 +1,98 @@
+# Test MBL File and Directory Operations (v0.18.0)
+
+program.write("📁 Testing MBL File and Directory Operations")
+program.write("============================================")
+
+# Test 1: Create test directory
+program.write("1. Creating test directory...")
+test_dir = "/tmp/mbl_file_test"
+
+if program.dir_exists(test_dir)
+    program.write("   Cleaning up existing test directory...")
+    program.dir_delete(test_dir)
+
+result = program.dir_create(test_dir)
+if result
+    program.write("   ✅ Directory created: " + test_dir)
+else
+    program.write("   ❌ Failed to create directory")
+
+# Test 2: Check directory exists
+program.write("2. Checking directory exists...")
+if program.dir_exists(test_dir)
+    program.write("   ✅ Directory exists")
+else
+    program.write("   ❌ Directory check failed")
+
+# Test 3: Create test files
+program.write("3. Creating test files...")
+file1 = test_dir + "/test1.txt"
+file2 = test_dir + "/test2.txt"
+
+# Write some content to files using program.open()
+data1 = program.open(file1, "write")
+data1.content = "Hello from MBL file operations!"
+data1.close()
+
+data2 = program.open(file2, "write")
+data2.content = "Second test file content."
+data2.close()
+
+program.write("   ✅ Created test files")
+
+# Test 4: Check file exists
+program.write("4. Checking file exists...")
+if program.file_exists(file1)
+    program.write("   ✅ File exists: test1.txt")
+else
+    program.write("   ❌ File check failed")
+
+# Test 5: Get file info
+program.write("5. Getting file information...")
+info = program.file_info(file1)
+program.write("   📊 File size: " + info.size.text() + " bytes")
+program.write("   📊 File type: " + info.type)
+program.write("   📊 Modified: " + info.modified.text())
+
+# Test 6: Copy file
+program.write("6. Copying file...")
+file3 = test_dir + "/test1_copy.txt"
+copy_result = program.file_copy(file1, file3)
+if copy_result
+    program.write("   ✅ File copied successfully")
+
+# Test 7: Move/rename file
+program.write("7. Moving/renaming file...")
+file4 = test_dir + "/test2_renamed.txt"
+move_result = program.file_move(file2, file4)
+if move_result
+    program.write("   ✅ File moved successfully")
+
+# Test 8: List directory contents
+program.write("8. Listing directory contents...")
+entries = program.dir_list(test_dir)
+program.write("   📂 Found " + entries.length().text() + " entries:")
+for entry in entries
+    program.write("      - " + entry.name + " (" + entry.type + ")")
+
+# Test 9: Delete files
+program.write("9. Deleting test files...")
+program.file_delete(file1)
+program.file_delete(file3)
+program.file_delete(file4)
+program.write("   ✅ Files deleted")
+
+# Test 10: Delete directory
+program.write("10. Deleting test directory...")
+delete_result = program.dir_delete(test_dir)
+if delete_result
+    program.write("   ✅ Directory deleted")
+
+# Verify cleanup
+if program.dir_exists(test_dir)
+    program.write("   ❌ Directory still exists!")
+else
+    program.write("   ✅ Cleanup verified")
+
+program.write("")
+program.write("🎉 File operations test complete!")
