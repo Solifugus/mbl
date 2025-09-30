@@ -1,0 +1,77 @@
+# MBL List Type Comprehensive Test
+
+program.write("=== List Type Tests ===")
+program.write("")
+
+# 1. Basic list creation
+program.write("1. Basic List Creation")
+numbers = [1, 2, 3, 4, 5]
+program.write("  Numbers: " + numbers.length + " items")
+program.write("  First: " + numbers[0])
+program.write("  Last: " + numbers[4])
+
+# 2. Lists with different types
+program.write("")
+program.write("2. Lists with Mixed Types")
+mixed = ["text", 42, $99.99, true]
+program.write("  Item 0 (text): " + mixed[0])
+program.write("  Item 1 (number): " + mixed[1])
+program.write("  Item 2 (money): " + mixed[2])
+program.write("  Item 3 (boolean): " + mixed[3])
+
+# 3. Empty list
+program.write("")
+program.write("3. Empty List")
+empty = []
+program.write("  ✓ Empty list created")
+
+# 4. List of records
+program.write("")
+program.write("4. List of Records")
+customers = [{name: "Alice", balance: $1000.00}, {name: "Bob", balance: $2500.00}, {name: "Charlie", balance: $750.00}]
+program.write("  Customers: " + customers.length + " items")
+program.write("  First: " + customers[0].name + " ($" + customers[0].balance + ")")
+program.write("  Second: " + customers[1].name + " ($" + customers[1].balance + ")")
+
+# 5. List iteration with for
+program.write("")
+program.write("5. List Iteration with For")
+fruits = ["apple", "banana", "orange"]
+program.write("  Fruits:")
+for fruit in fruits:
+    program.write("    - " + fruit)
+
+# 6. List length
+program.write("")
+program.write("6. List Length Property")
+items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+program.write("  Item count: " + items.length)
+
+# 7. Lists in conditionals
+program.write("")
+program.write("7. Lists in Conditionals")
+prices = [$10.00, $20.00, $30.00]
+if prices[0] < prices[2]:
+    program.write("  ✓ First price < Third price")
+
+# 8. Lists with variables
+program.write("")
+program.write("8. Lists with Variables")
+a = 100
+b = 200
+c = 300
+values = [a, b, c]
+program.write("  Values: " + values[0] + ", " + values[1] + ", " + values[2])
+
+# 9. List comparison
+program.write("")
+program.write("9. List Element Comparison")
+list1 = [1, 2, 3]
+list2 = [1, 2, 3]
+if list1[0] == list2[0]:
+    program.write("  ✓ First elements are equal")
+if list1[1] == list2[1]:
+    program.write("  ✓ Second elements are equal")
+
+program.write("")
+program.write("=== List Type Tests Complete ===")

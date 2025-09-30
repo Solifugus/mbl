@@ -1,0 +1,127 @@
+# MBL Record Type Comprehensive Test
+
+program.write("=== Record Type Tests ===")
+program.write("")
+
+# 1. Basic record creation
+program.write("1. Basic Record Creation")
+person = {
+    name: "Alice",
+    age: 30,
+    city: "Seattle"
+}
+program.write("  Name: " + person.name)
+program.write("  Age: " + person.age)
+program.write("  City: " + person.city)
+
+# 2. Records with different types
+program.write("")
+program.write("2. Records with Mixed Types")
+product = {
+    name: "Widget",
+    price: $29.99,
+    quantity: 100,
+    in_stock: true,
+    created: @2025-01-15 10:00:00
+}
+program.write("  Product: " + product.name)
+program.write("  Price: " + product.price)
+program.write("  Quantity: " + product.quantity)
+program.write("  In stock: " + product.in_stock)
+program.write("  Created: " + product.created)
+
+# 3. Empty record
+program.write("")
+program.write("3. Empty Record")
+empty = {}
+program.write("  ✓ Empty record created")
+
+# 4. Nested records
+program.write("")
+program.write("4. Nested Records")
+company = {
+    name: "Tech Corp",
+    address: {
+        street: "123 Main St",
+        city: "Portland",
+        zip: "97201"
+    }
+}
+program.write("  Company: " + company.name)
+program.write("  Street: " + company.address.street)
+program.write("  City: " + company.address.city)
+program.write("  Zip: " + company.address.zip)
+
+# 5. Record field assignment
+program.write("")
+program.write("5. Record Field Assignment")
+user = {
+    username: "alice",
+    status: "active"
+}
+program.write("  Initial status: " + user.status)
+user.status = "inactive"
+program.write("  Updated status: " + user.status)
+
+# 6. Adding new fields
+program.write("")
+program.write("6. Adding New Fields")
+item = {
+    name: "Book"
+}
+program.write("  Initial: " + item.name)
+item.price = $15.99
+program.write("  Added price: " + item.price)
+
+# 7. Records in calculations
+program.write("")
+program.write("7. Records in Calculations")
+order = {
+    subtotal: $100.00,
+    tax_rate: 0.08
+}
+order.tax = order.subtotal * order.tax_rate
+order.total = order.subtotal + order.tax
+program.write("  Subtotal: " + order.subtotal)
+program.write("  Tax: " + order.tax)
+program.write("  Total: " + order.total)
+
+# 8. Records in conditionals
+program.write("")
+program.write("8. Records in Conditionals")
+account = {
+    balance: $5000.00,
+    overdraft_limit: $1000.00
+}
+if account.balance > account.overdraft_limit:
+    program.write("  ✓ Account has sufficient funds")
+
+# 9. Record comparison
+program.write("")
+program.write("9. Record Field Comparison")
+user1 = {
+    name: "Alice",
+    role: "admin"
+}
+user2 = {
+    name: "Bob",
+    role: "admin"
+}
+if user1.role == user2.role:
+    program.write("  ✓ Both users have same role")
+if user1.name != user2.name:
+    program.write("  ✓ Users have different names")
+
+# 10. Records with lists
+program.write("")
+program.write("10. Records with Lists")
+team = {
+    name: "Development",
+    members: ["Alice", "Bob", "Charlie"]
+}
+program.write("  Team: " + team.name)
+program.write("  First member: " + team.members[0])
+program.write("  Second member: " + team.members[1])
+
+program.write("")
+program.write("=== Record Type Tests Complete ===")
