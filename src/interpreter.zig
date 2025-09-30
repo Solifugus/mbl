@@ -674,8 +674,32 @@ pub const Interpreter = struct {
             }
         }
 
-        // For other property assignments, evaluate object and set property
-        std.log.warn("  Property assignment to non-scope objects not yet supported", .{});
+        // For other property assignments, we need to handle record field mutation
+        // First, we need to get the object from the identifier
+        if (prop_access.object.* == .identifier) {
+            const obj_name = prop_access.object.identifier.name;
+            const prop_name = prop_access.property;
+
+            // Get the record from the current scope
+            if (self.getVariable(obj_name)) |obj_value| {
+                if (obj_value == .record) {
+                    // We have a record, but we need to modify it in place
+                    // Get a mutable reference to the record in the variable storage
+                    var record_mut = obj_value.record;
+                    try record_mut.set(prop_name, value);
+                    std.log.info("📝 Assigned '{s}.{s}'", .{obj_name, prop_name});
+                    return;
+                } else {
+                    std.log.warn("  Cannot assign property to non-record type", .{});
+                    return;
+                }
+            } else {
+                std.log.warn("  Object '{s}' not found for property assignment", .{obj_name});
+                return;
+            }
+        }
+
+        std.log.warn("  Complex property assignment not yet supported", .{});
     }
 
     fn evaluateExpression(self: *Interpreter, expr: Expression) !MBLValue {
