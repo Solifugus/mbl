@@ -1,0 +1,67 @@
+# MBL Time Type Comprehensive Test
+
+program.write("=== Time Type Tests ===")
+program.write("")
+
+# 1. Basic time values
+program.write("1. Basic Time Values")
+time1 = @2025-01-15 14:30:00
+time2 = @2025-12-31 23:59:59
+time3 = @2020-06-15 08:00:00
+program.write("  Time 1: " + time1)
+program.write("  Time 2: " + time2)
+program.write("  Time 3: " + time3)
+
+# 2. Time comparisons
+program.write("")
+program.write("2. Time Comparisons")
+early = @2025-01-01 00:00:00
+late = @2025-12-31 23:59:59
+if early < late:
+    program.write("  ✓ Earlier time < Later time")
+if late > early:
+    program.write("  ✓ Later time > Earlier time")
+same1 = @2025-06-15 12:00:00
+same2 = @2025-06-15 12:00:00
+if same1 == same2:
+    program.write("  ✓ Identical times are equal")
+
+# 3. Time in records
+program.write("")
+program.write("3. Time in Records")
+event = {
+    name: "Conference",
+    start: @2025-03-20 09:00:00,
+    end: @2025-03-20 17:00:00
+}
+program.write("  Event: " + event.name)
+program.write("  Start: " + event.start)
+program.write("  End: " + event.end)
+
+# 4. Time in lists
+program.write("")
+program.write("4. Time in Lists")
+milestones = [@2025-01-01 00:00:00, @2025-06-01 00:00:00, @2025-12-01 00:00:00]
+program.write("  Milestones: 3 items")
+program.write("  Q1: " + milestones[0])
+program.write("  Q2: " + milestones[1])
+program.write("  Q4: " + milestones[2])
+
+# 5. Time in conditionals
+program.write("")
+program.write("5. Time in Conditionals")
+meeting = @2025-06-15 14:00:00
+deadline = @2025-07-01 00:00:00
+if meeting < deadline:
+    program.write("  ✓ Meeting is before deadline")
+
+# 6. Time assignment
+program.write("")
+program.write("6. Time Assignment")
+appointment = @2025-04-10 10:30:00
+program.write("  Original: " + appointment)
+appointment = @2025-04-10 15:30:00
+program.write("  Rescheduled: " + appointment)
+
+program.write("")
+program.write("=== Time Type Tests Complete ===")

@@ -1,0 +1,117 @@
+# MBL Boolean Type Comprehensive Test
+
+program.write("=== Boolean Type Tests ===")
+program.write("")
+
+# 1. Basic boolean values
+program.write("1. Basic Boolean Values")
+true_val = true
+false_val = false
+program.write("  True: " + true_val)
+program.write("  False: " + false_val)
+
+# 2. Boolean comparisons
+program.write("")
+program.write("2. Boolean Comparisons")
+if true == true:
+    program.write("  ✓ true == true")
+if false == false:
+    program.write("  ✓ false == false")
+if true != false:
+    program.write("  ✓ true != false")
+
+# 3. Boolean in conditions
+program.write("")
+program.write("3. Boolean in Conditions")
+is_active = true
+if is_active:
+    program.write("  ✓ true evaluates as true in if")
+is_inactive = false
+if is_inactive:
+    program.write("  ✗ false should not enter if")
+else:
+    program.write("  ✓ false goes to else branch")
+
+# 4. Boolean from comparisons
+program.write("")
+program.write("4. Boolean from Comparisons")
+x = 10
+y = 20
+is_greater = x > y
+is_less = x < y
+is_equal = x == x
+program.write("  10 > 20: " + is_greater)
+program.write("  10 < 20: " + is_less)
+program.write("  10 == 10: " + is_equal)
+
+# 5. Boolean logic - AND
+program.write("")
+program.write("5. Boolean Logic - AND")
+if true and true:
+    program.write("  ✓ true and true = true")
+if true and false:
+    program.write("  ✗ true and false should be false")
+else:
+    program.write("  ✓ true and false = false")
+if false and false:
+    program.write("  ✗ false and false should be false")
+else:
+    program.write("  ✓ false and false = false")
+
+# 6. Boolean logic - OR
+program.write("")
+program.write("6. Boolean Logic - OR")
+if true or false:
+    program.write("  ✓ true or false = true")
+if false or true:
+    program.write("  ✓ false or true = true")
+if false or false:
+    program.write("  ✗ false or false should be false")
+else:
+    program.write("  ✓ false or false = false")
+
+# 7. Boolean logic - NOT
+program.write("")
+program.write("7. Boolean Logic - NOT")
+if not false:
+    program.write("  ✓ not false = true")
+if not true:
+    program.write("  ✗ not true should be false")
+else:
+    program.write("  ✓ not true = false")
+
+# 8. Boolean in records
+program.write("")
+program.write("8. Boolean in Records")
+user = {
+    name: "Alice",
+    is_admin: true,
+    is_active: false
+}
+program.write("  User: " + user.name)
+program.write("  Is admin: " + user.is_admin)
+program.write("  Is active: " + user.is_active)
+
+# 9. Boolean in lists
+program.write("")
+program.write("9. Boolean in Lists")
+flags = [true, false, true]
+program.write("  Flags: 3 items")
+program.write("  First: " + flags[0])
+program.write("  Second: " + flags[1])
+program.write("  Third: " + flags[2])
+
+# 10. Complex boolean expressions
+program.write("")
+program.write("10. Complex Boolean Expressions")
+age = 25
+has_license = true
+if age >= 18 and has_license:
+    program.write("  ✓ Can drive (age >= 18 AND has_license)")
+score = 85
+is_passing = score >= 70
+if is_passing:
+    program.write("  ✓ Passing grade (score >= 70)")
+
+program.write("")
+program.write("=== Boolean Type Tests Complete ===")

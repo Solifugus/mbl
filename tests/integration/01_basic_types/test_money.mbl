@@ -1,0 +1,87 @@
+# MBL Money Type Comprehensive Test
+
+program.write("=== Money Type Tests ===")
+program.write("")
+
+# 1. Basic money values
+program.write("1. Basic Money Values")
+zero_dollars = $0.00
+ten_dollars = $10.00
+cents = $0.99
+large = $999999.99
+program.write("  Zero: " + zero_dollars)
+program.write("  Ten dollars: " + ten_dollars)
+program.write("  Cents: " + cents)
+program.write("  Large: " + large)
+
+# 2. Money arithmetic
+program.write("")
+program.write("2. Money Arithmetic")
+price = $50.00
+discount = $10.00
+total = price - discount
+program.write("  $50.00 - $10.00 = " + total)
+quantity = 3
+order_total = price * quantity
+program.write("  $50.00 * 3 = " + order_total)
+
+# 3. Money comparisons
+program.write("")
+program.write("3. Money Comparisons")
+budget = $1000.00
+expense = $750.00
+if budget > expense:
+    program.write("  ✓ $1000.00 > $750.00")
+if expense < budget:
+    program.write("  ✓ $750.00 < $1000.00")
+price1 = $99.99
+price2 = $99.99
+if price1 == price2:
+    program.write("  ✓ $99.99 == $99.99")
+
+# 4. Money in calculations
+program.write("")
+program.write("4. Money in Calculations")
+subtotal = $100.00
+tax_rate = 0.08
+tax = subtotal * tax_rate
+final = subtotal + tax
+program.write("  Subtotal: " + subtotal)
+program.write("  Tax (8%): " + tax)
+program.write("  Final: " + final)
+
+# 5. Money with records
+program.write("")
+program.write("5. Money with Records")
+product = {
+    name: "Widget",
+    price: $29.99,
+    quantity: 5
+}
+product_total = product.price * product.quantity
+program.write("  Product: " + product.name)
+program.write("  Price: " + product.price)
+program.write("  Quantity: " + product.quantity)
+program.write("  Total: " + product_total)
+
+# 6. Money in lists
+program.write("")
+program.write("6. Money in Lists")
+prices = [$10.00, $20.00, $30.00]
+program.write("  Prices: 3 items")
+program.write("  First: " + prices[0])
+program.write("  Second: " + prices[1])
+program.write("  Third: " + prices[2])
+
+# 7. Money precision
+program.write("")
+program.write("7. Money Precision")
+precise1 = $0.01
+precise2 = $0.99
+precise_sum = precise1 + precise2
+program.write("  $0.01 + $0.99 = " + precise_sum)
+third = $10.00 / 3
+program.write("  $10.00 / 3 = " + third)
+
+program.write("")
+program.write("=== Money Type Tests Complete ===")
