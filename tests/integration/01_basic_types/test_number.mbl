@@ -1,0 +1,92 @@
+# MBL Number Type Comprehensive Test
+
+program.write("=== Number Type Tests ===")
+program.write("")
+
+# 1. Integer values
+program.write("1. Integer Values")
+int_zero = 0
+int_positive = 42
+int_negative = -17
+int_large = 999999
+program.write("  Zero: " + int_zero)
+program.write("  Positive: " + int_positive)
+program.write("  Negative: " + int_negative)
+program.write("  Large: " + int_large)
+
+# 2. Decimal values
+program.write("")
+program.write("2. Decimal Values")
+dec_half = 0.5
+dec_precise = 3.14159
+dec_small = 0.001
+dec_negative = -2.5
+program.write("  Half: " + dec_half)
+program.write("  Pi approx: " + dec_precise)
+program.write("  Small: " + dec_small)
+program.write("  Negative: " + dec_negative)
+
+# 3. Arithmetic operations
+program.write("")
+program.write("3. Arithmetic Operations")
+a = 10
+b = 3
+program.write("  Addition: 10 + 3 = " + (a + b))
+program.write("  Subtraction: 10 - 3 = " + (a - b))
+program.write("  Multiplication: 10 * 3 = " + (a * b))
+program.write("  Division: 10 / 3 = " + (a / b))
+
+# 4. Comparison operations
+program.write("")
+program.write("4. Comparison Operations")
+x = 10
+y = 20
+if x < y:
+    program.write("  ✓ 10 < 20")
+if y > x:
+    program.write("  ✓ 20 > 10")
+if x <= 10:
+    program.write("  ✓ 10 <= 10")
+if y >= 20:
+    program.write("  ✓ 20 >= 20")
+if x == 10:
+    program.write("  ✓ 10 == 10")
+if x != y:
+    program.write("  ✓ 10 != 20")
+
+# 5. Order of operations
+program.write("")
+program.write("5. Order of Operations")
+result1 = 2 + 3 * 4
+program.write("  2 + 3 * 4 = " + result1 + " (should be 14)")
+result2 = (2 + 3) * 4
+program.write("  (2 + 3) * 4 = " + result2 + " (should be 20)")
+
+# 6. Negative number operations
+program.write("")
+program.write("6. Negative Number Operations")
+neg = -5
+program.write("  -5 + 10 = " + (neg + 10))
+program.write("  -5 * 3 = " + (neg * 3))
+program.write("  -5 / 2 = " + (neg / 2))
+
+# 7. Zero behavior
+program.write("")
+program.write("7. Zero Behavior")
+zero = 0
+program.write("  0 + 5 = " + (zero + 5))
+program.write("  0 * 100 = " + (zero * 100))
+program.write("  5 - 5 = " + (5 - 5))
+
+# 8. Assignment and reassignment
+program.write("")
+program.write("8. Assignment and Reassignment")
+counter = 0
+program.write("  Initial: " + counter)
+counter = counter + 1
+program.write("  After +1: " + counter)
+counter = counter * 10
+program.write("  After *10: " + counter)
+
+program.write("")
+program.write("=== Number Type Tests Complete ===")

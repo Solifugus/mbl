@@ -1,0 +1,110 @@
+# MBL Text Type Comprehensive Test
+
+program.write("=== Text Type Tests ===")
+program.write("")
+
+# 1. Basic text values
+program.write("1. Basic Text Values")
+empty = ""
+single = "a"
+word = "hello"
+sentence = "Hello, World!"
+multiword = "Modern Business Language"
+program.write("  Empty: '" + empty + "'")
+program.write("  Single: '" + single + "'")
+program.write("  Word: '" + word + "'")
+program.write("  Sentence: '" + sentence + "'")
+program.write("  Multi-word: '" + multiword + "'")
+
+# 2. Special characters
+program.write("")
+program.write("2. Special Characters")
+spaces = "text with spaces"
+numbers = "text123"
+punctuation = "Hello! How are you?"
+program.write("  Spaces: '" + spaces + "'")
+program.write("  Numbers: '" + numbers + "'")
+program.write("  Punctuation: '" + punctuation + "'")
+
+# 3. Concatenation
+program.write("")
+program.write("3. Concatenation")
+first = "Hello"
+second = " "
+third = "World"
+combined = first + second + third
+program.write("  'Hello' + ' ' + 'World' = '" + combined + "'")
+greeting = "Hi, " + "Alice"
+program.write("  'Hi, ' + 'Alice' = '" + greeting + "'")
+
+# 4. Text with numbers
+program.write("")
+program.write("4. Text with Numbers")
+count = 42
+message = "Count: " + count
+program.write("  " + message)
+price = $99.99
+price_text = "Price: " + price
+program.write("  " + price_text)
+
+# 5. Comparison operations
+program.write("")
+program.write("5. Comparison Operations")
+text1 = "hello"
+text2 = "hello"
+text3 = "world"
+if text1 == text2:
+    program.write("  ✓ 'hello' == 'hello'")
+if text1 != text3:
+    program.write("  ✓ 'hello' != 'world'")
+
+# 6. Text methods - contains
+program.write("")
+program.write("6. Text.contains() Method")
+sentence = "The quick brown fox"
+if sentence.contains("quick"):
+    program.write("  ✓ 'The quick brown fox' contains 'quick'")
+if sentence.contains("brown"):
+    program.write("  ✓ 'The quick brown fox' contains 'brown'")
+
+# 7. Text methods - starts_with
+program.write("")
+program.write("7. Text.starts_with() Method")
+text = "hello world"
+if text.starts_with("hello"):
+    program.write("  ✓ 'hello world' starts with 'hello'")
+if text.starts_with("h"):
+    program.write("  ✓ 'hello world' starts with 'h'")
+
+# 8. Text methods - ends_with
+program.write("")
+program.write("8. Text.ends_with() Method")
+filename = "report.pdf"
+if filename.ends_with(".pdf"):
+    program.write("  ✓ 'report.pdf' ends with '.pdf'")
+if filename.ends_with("pdf"):
+    program.write("  ✓ 'report.pdf' ends with 'pdf'")
+
+# 9. Text methods - upper/lower
+program.write("")
+program.write("9. Text.upper() and Text.lower() Methods")
+text = "Hello World"
+upper = text.upper()
+lower = text.lower()
+program.write("  Original: '" + text + "'")
+program.write("  Upper: '" + upper + "'")
+program.write("  Lower: '" + lower + "'")
+
+# 10. Empty text behavior
+program.write("")
+program.write("10. Empty Text Behavior")
+empty1 = ""
+empty2 = ""
+if empty1 == empty2:
+    program.write("  ✓ Empty strings are equal")
+non_empty = "text"
+if empty1 != non_empty:
+    program.write("  ✓ Empty string != non-empty string")
+
+program.write("")
+program.write("=== Text Type Tests Complete ===")
