@@ -777,8 +777,8 @@ pub const Interpreter = struct {
         } else if (clean_str.len == 8 and clean_str[2] == ':' and clean_str[5] == ':') {
             // Time format: HH:MM:SS
             return try self.parseTime(clean_str);
-        } else if (clean_str.len == 19 and clean_str[10] == 'T') {
-            // DateTime format: YYYY-MM-DDTHH:MM:SS
+        } else if (clean_str.len == 19 and (clean_str[10] == 'T' or clean_str[10] == ' ')) {
+            // DateTime format: YYYY-MM-DDTHH:MM:SS or YYYY-MM-DD HH:MM:SS
             return try self.parseDateTime(clean_str);
         } else {
             // Try to parse as timestamp
