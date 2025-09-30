@@ -1,0 +1,103 @@
+# MBL If Statement Comprehensive Test
+
+program.write("=== If Statement Tests ===")
+program.write("")
+
+# 1. Basic if
+program.write("1. Basic If")
+x = 10
+if x > 5:
+    program.write("  ✓ x > 5 is true")
+
+# 2. If with else
+program.write("")
+program.write("2. If with Else")
+y = 3
+if y > 5:
+    program.write("  ✗ Should not execute")
+else:
+    program.write("  ✓ Else branch executed")
+
+# 3. If with multiple conditions
+program.write("")
+program.write("3. If with AND")
+age = 25
+has_license = true
+if age >= 18 and has_license:
+    program.write("  ✓ Both conditions true")
+
+# 4. If with OR
+program.write("")
+program.write("4. If with OR")
+is_weekend = true
+is_holiday = false
+if is_weekend or is_holiday:
+    program.write("  ✓ At least one condition true")
+
+# 5. Nested if statements
+program.write("")
+program.write("5. Nested If Statements")
+score = 85
+if score >= 70:
+    program.write("  ✓ Passing grade")
+    if score >= 90:
+        program.write("  ✗ Should not be A")
+    else:
+        program.write("  ✓ Grade is B")
+
+# 6. Multiple comparisons
+program.write("")
+program.write("6. Multiple Comparisons")
+value = 50
+if value > 25 and value < 75:
+    program.write("  ✓ Value is between 25 and 75")
+
+# 7. If with NOT
+program.write("")
+program.write("7. If with NOT")
+is_locked = false
+if not is_locked:
+    program.write("  ✓ NOT false is true")
+
+# 8. If with equality
+program.write("")
+program.write("8. If with Equality")
+status = "active"
+if status == "active":
+    program.write("  ✓ Status is active")
+
+# 9. If with inequality
+program.write("")
+program.write("9. If with Inequality")
+count = 10
+if count != 0:
+    program.write("  ✓ Count is not zero")
+
+# 10. If with complex expressions
+program.write("")
+program.write("10. If with Complex Expressions")
+price = $100.00
+discount = $10.00
+min_price = $50.00
+if (price - discount) > min_price:
+    program.write("  ✓ Price after discount is above minimum")
+
+# 11. If with record fields
+program.write("")
+program.write("11. If with Record Fields")
+user = {
+    role: "admin",
+    active: true
+}
+if user.role == "admin" and user.active:
+    program.write("  ✓ User is active admin")
+
+# 12. If with list elements
+program.write("")
+program.write("12. If with List Elements")
+numbers = [10, 20, 30]
+if numbers[0] < numbers[2]:
+    program.write("  ✓ First < Third")
+
+program.write("")
+program.write("=== If Statement Tests Complete ===")

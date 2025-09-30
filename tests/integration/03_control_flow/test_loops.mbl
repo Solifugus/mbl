@@ -1,0 +1,89 @@
+# MBL Loop Comprehensive Test
+
+program.write("=== Loop Tests ===")
+program.write("")
+
+# 1. Basic for loop
+program.write("1. Basic For Loop")
+numbers = [1, 2, 3, 4, 5]
+for num in numbers:
+    program.write("  Number: " + num)
+
+# 2. For loop with strings
+program.write("")
+program.write("2. For Loop with Strings")
+names = ["Alice", "Bob", "Charlie"]
+for name in names:
+    program.write("  Name: " + name)
+
+# 3. For loop with records
+program.write("")
+program.write("3. For Loop with Records")
+users = [{name: "Alice", age: 30}, {name: "Bob", age: 25}]
+for user in users:
+    program.write("  User: " + user.name + ", Age: " + user.age)
+
+# 4. For loop with counter
+program.write("")
+program.write("4. For Loop with Counter")
+items = ["a", "b", "c"]
+count = 0
+for item in items:
+    count = count + 1
+program.write("  Iterated " + count + " times")
+
+# 5. Basic while loop
+program.write("")
+program.write("5. Basic While Loop")
+i = 1
+while i <= 3:
+    program.write("  Iteration: " + i)
+    i = i + 1
+
+# 6. While loop with condition
+program.write("")
+program.write("6. While Loop with Condition")
+total = 0
+while total < 10:
+    total = total + 3
+program.write("  Final total: " + total)
+
+# 7. While loop with boolean
+program.write("")
+program.write("7. While Loop with Boolean")
+running = true
+counter = 0
+while running:
+    counter = counter + 1
+    if counter >= 3:
+        running = false
+program.write("  Counter reached: " + counter)
+
+# 8. Nested loops
+program.write("")
+program.write("8. Nested Loops")
+outer = [1, 2]
+inner = ["a", "b"]
+for o in outer:
+    for i in inner:
+        program.write("  " + o + i)
+
+# 9. Loop with conditional
+program.write("")
+program.write("9. Loop with Conditional")
+values = [5, 10, 15, 20]
+for val in values:
+    if val > 10:
+        program.write("  Large: " + val)
+
+# 10. Loop with accumulation
+program.write("")
+program.write("10. Loop with Accumulation")
+prices = [$10.00, $20.00, $30.00]
+sum = $0.00
+for price in prices:
+    sum = sum + price
+program.write("  Total: " + sum)
+
+program.write("")
+program.write("=== Loop Tests Complete ===")
