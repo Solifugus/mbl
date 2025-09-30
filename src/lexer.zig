@@ -437,7 +437,10 @@ pub const Lexer = struct {
     }
 
     fn scanMoney(self: *Lexer) LexError!Token {
-        // Skip the $, then scan number part
+        // Skip the $, check for optional minus sign, then scan number part
+        if (self.peek() == '-') {
+            _ = self.advance();
+        }
         while (self.isDigit(self.peek()) or self.peek() == '.' or self.peek() == '_') {
             _ = self.advance();
         }
