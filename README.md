@@ -10,10 +10,13 @@
 
 MBL (Modern Business Language) is a programming language made specifically for business applications, data processes, integrations, and migrations.  Since COBOL in the 1950s, there have been a handful of attempts but none as comprehensive or as tailored for business needs as MBL.  
 
-**NOTE: This is version 1.0.0 Pre-release Candidate**
+**IMPORTANT PRE-RELEASE NOTES:**
 Although feature complete, this release is for testing and bug hunting.
-It is **NOT yet ready for production**.
-
+- **NOT PRODUCTION READY (YET)**
+- This is a version 1.0.0 Pre-Release (working through bugs and other nuance)
+- Currently, only supporting Unbuntu/Debian (Windows may be a distance objective)
+- Currency Conversions Not Ready Yet but 4 digits after penny accuracy is there.
+- Only database tested so far is PostgreSQL 
 
 ## Features
 
