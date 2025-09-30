@@ -50,4 +50,8 @@ pub fn main() !void {
     defer interp.deinit();
 
     try interp.execute(statements);
+
+    // Print accumulated output
+    const stdout = std.io.getStdOut().writer();
+    try stdout.writeAll(interp.output.items);
 }

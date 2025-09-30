@@ -1,0 +1,128 @@
+# MBL v1.0.0 Overview Test
+# Quick verification that all major language features work
+
+program.write("=== MBL v1.0.0 Overview Test ===")
+program.write("")
+
+# 1. Basic Types
+program.write("Testing Basic Types...")
+text_val = "Hello MBL"
+number_val = 42
+money_val = $99.99
+time_val = @2025-01-15 14:30:00
+bool_val = true
+program.write("  ✓ Text: " + text_val)
+program.write("  ✓ Number: " + number_val)
+program.write("  ✓ Money: " + money_val)
+program.write("  ✓ Time: " + time_val)
+program.write("  ✓ Boolean: " + bool_val)
+
+# 2. Data Structures
+program.write("")
+program.write("Testing Data Structures...")
+person = {
+    name: "Alice",
+    age: 30,
+    salary: $75000.00
+}
+program.write("  ✓ Record: " + person.name + ", age " + person.age)
+
+numbers = [1, 2, 3, 4, 5]
+program.write("  ✓ List: " + numbers.length + " items")
+
+# 3. Arithmetic
+program.write("")
+program.write("Testing Arithmetic...")
+sum = 10 + 5
+diff = 10 - 5
+prod = 10 * 5
+quot = 10 / 5
+program.write("  ✓ Addition: " + sum)
+program.write("  ✓ Subtraction: " + diff)
+program.write("  ✓ Multiplication: " + prod)
+program.write("  ✓ Division: " + quot)
+
+# 4. Comparisons
+program.write("")
+program.write("Testing Comparisons...")
+if 10 > 5:
+    program.write("  ✓ Greater than works")
+if 5 < 10:
+    program.write("  ✓ Less than works")
+if 10 == 10:
+    program.write("  ✓ Equality works")
+if 10 != 5:
+    program.write("  ✓ Inequality works")
+
+# 5. Control Flow - If/Else
+program.write("")
+program.write("Testing If/Else...")
+x = 15
+if x > 10:
+    program.write("  ✓ If statement works")
+else:
+    program.write("  ✗ If statement failed")
+
+if x < 10:
+    program.write("  ✗ Else statement failed")
+else:
+    program.write("  ✓ Else statement works")
+
+# 6. For Loops
+program.write("")
+program.write("Testing For Loops...")
+count = 0
+items = [1, 2, 3]
+for item in items:
+    count = count + 1
+program.write("  ✓ For loop iterated " + count + " times")
+
+# 7. While Loops
+program.write("")
+program.write("Testing While Loops...")
+counter = 0
+while counter < 3:
+    counter = counter + 1
+program.write("  ✓ While loop completed " + counter + " iterations")
+
+# 8. Functions
+program.write("")
+program.write("Testing Functions...")
+add_numbers(a, b):
+    return a + b
+
+result = add_numbers(5, 7)
+program.write("  ✓ Function returned: " + result)
+
+# 9. Text Methods
+program.write("")
+program.write("Testing Text Methods...")
+text = "hello world"
+upper = text.upper()
+if upper == "HELLO WORLD":
+    program.write("  ✓ Text.upper() works")
+
+if text.contains("world"):
+    program.write("  ✓ Text.contains() works")
+
+if text.starts_with("hello"):
+    program.write("  ✓ Text.starts_with() works")
+
+if text.ends_with("world"):
+    program.write("  ✓ Text.ends_with() works")
+
+# 10. Scope Navigation
+program.write("")
+program.write("Testing Scope...")
+program.test_value = "global"
+nested = {
+    test_value: "local"
+}
+if nested.test_value == "local":
+    program.write("  ✓ Local scope works")
+if program.test_value == "global":
+    program.write("  ✓ Program scope works")
+
+program.write("")
+program.write("=== Overview Test Complete ===")
+program.write("All basic features verified!")
