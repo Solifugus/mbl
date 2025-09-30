@@ -2652,22 +2652,15 @@ pub const Interpreter = struct {
                 for (0..list.len()) |i| {
                     const item = list.get(i) orelse continue;
 
-                    // Create empty local scope for this iteration (no loop variable ownership)
+                    // Create local scope for this iteration and store loop variable in it
                     var local_scope = memory.Record.init(self.allocator);
                     defer local_scope.deinit();
 
-                    // Store loop variable separately without transferring ownership
-                    self.current_loop_variable = item;
-                    self.current_loop_variable_name = for_stmt.variable;
+                    // Store loop variable in the local scope (not as current_loop_variable)
+                    try local_scope.set(for_stmt.variable, item);
 
                     try self.pushScope(&local_scope);
                     defer self.popScope();
-
-                    // Clear loop variable after scope is popped
-                    defer {
-                        self.current_loop_variable = null;
-                        self.current_loop_variable_name = null;
-                    }
 
                     std.log.info("🔄 For iteration {}, {s} = {s}", .{i, for_stmt.variable, @tagName(item)});
 
@@ -2708,22 +2701,15 @@ pub const Interpreter = struct {
                         mutable_key.deinit(self.allocator);
                     }
 
-                    // Create empty local scope for this iteration (no loop variable ownership)
+                    // Create local scope for this iteration and store loop variable in it
                     var local_scope = memory.Record.init(self.allocator);
                     defer local_scope.deinit();
 
-                    // Store loop variable separately without transferring ownership
-                    self.current_loop_variable = key_value;
-                    self.current_loop_variable_name = for_stmt.variable;
+                    // Store loop variable in the local scope (not as current_loop_variable)
+                    try local_scope.set(for_stmt.variable, key_value);
 
                     try self.pushScope(&local_scope);
                     defer self.popScope();
-
-                    // Clear loop variable after scope is popped
-                    defer {
-                        self.current_loop_variable = null;
-                        self.current_loop_variable_name = null;
-                    }
 
                     std.log.info("🔄 For iteration {}, {s} = {s}", .{i, for_stmt.variable, entry.key_ptr.*});
 
