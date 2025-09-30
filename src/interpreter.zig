@@ -1796,6 +1796,69 @@ pub const Interpreter = struct {
             return MBLValue{ .text = result };
         }
 
+        // upper() method - convert to uppercase
+        else if (std.mem.eql(u8, method_name, "upper")) {
+            const result = try text.upper(self.allocator);
+            return MBLValue{ .text = result };
+        }
+
+        // lower() method - convert to lowercase
+        else if (std.mem.eql(u8, method_name, "lower")) {
+            const result = try text.lower(self.allocator);
+            return MBLValue{ .text = result };
+        }
+
+        // contains() method - check if text contains substring
+        else if (std.mem.eql(u8, method_name, "contains")) {
+            if (arguments.len == 0) {
+                std.log.warn("contains() method requires substring argument", .{});
+                return MBLValue{ .boolean = memory.Boolean.init(false) };
+            }
+
+            const search_val = try self.evaluateExpression(arguments[0]);
+            if (search_val != .text) {
+                std.log.warn("contains() argument must be text", .{});
+                return MBLValue{ .boolean = memory.Boolean.init(false) };
+            }
+
+            const found = std.mem.indexOf(u8, text.data, search_val.text.data) != null;
+            return MBLValue{ .boolean = memory.Boolean.init(found) };
+        }
+
+        // starts_with() method - check if text starts with prefix
+        else if (std.mem.eql(u8, method_name, "starts_with")) {
+            if (arguments.len == 0) {
+                std.log.warn("starts_with() method requires prefix argument", .{});
+                return MBLValue{ .boolean = memory.Boolean.init(false) };
+            }
+
+            const prefix_val = try self.evaluateExpression(arguments[0]);
+            if (prefix_val != .text) {
+                std.log.warn("starts_with() argument must be text", .{});
+                return MBLValue{ .boolean = memory.Boolean.init(false) };
+            }
+
+            const starts = std.mem.startsWith(u8, text.data, prefix_val.text.data);
+            return MBLValue{ .boolean = memory.Boolean.init(starts) };
+        }
+
+        // ends_with() method - check if text ends with suffix
+        else if (std.mem.eql(u8, method_name, "ends_with")) {
+            if (arguments.len == 0) {
+                std.log.warn("ends_with() method requires suffix argument", .{});
+                return MBLValue{ .boolean = memory.Boolean.init(false) };
+            }
+
+            const suffix_val = try self.evaluateExpression(arguments[0]);
+            if (suffix_val != .text) {
+                std.log.warn("ends_with() argument must be text", .{});
+                return MBLValue{ .boolean = memory.Boolean.init(false) };
+            }
+
+            const ends = std.mem.endsWith(u8, text.data, suffix_val.text.data);
+            return MBLValue{ .boolean = memory.Boolean.init(ends) };
+        }
+
         // Unknown method
         else {
             std.log.warn("Unknown text method: {s}", .{method_name});
