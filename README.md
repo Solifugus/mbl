@@ -53,9 +53,9 @@ mbl hello.mbl
 ```mbl
 # File organization automation
 entries = program.dir_list("/documents")
-for entry in entries
-    if entry.type = "file"
-        if entry.name.ends_with(".pdf")
+for entry in entries:
+    if entry.type = "file":
+        if entry.name.ends_with(".pdf"):
             program.file_move("/documents/" + entry.name, "/documents/pdfs/" + entry.name)
             program.write("📄 Organized: " + entry.name)
 ```
@@ -116,7 +116,7 @@ total = price * 5  # $499.95
 
 # Time operations
 meeting = @2025-01-15 14:30:00
-if program.date.now() > meeting
+if program.date.now() > meeting:
     program.write("Meeting has passed")
 
 # Records (structured data)
@@ -131,12 +131,12 @@ customer = {
 
 ```mbl
 # Check and process files
-if program.file_exists("/data/report.pdf")
+if program.file_exists("/data/report.pdf"):
     info = program.file_info("/data/report.pdf")
-    program.write("Size: " + info.size.text() + " bytes")
+    program.write("Size: " + info.size.as_text() + " bytes")
 
     # Backup
-    backup_dir = "/backup/" + program.date.today().text()
+    backup_dir = "/backup/" + program.date.today().as_text()
     program.dir_create(backup_dir)
     program.file_copy("/data/report.pdf", backup_dir + "/report.pdf")
 ```
@@ -146,13 +146,17 @@ if program.file_exists("/data/report.pdf")
 ```mbl
 # Secure credential management
 db_config = program.secret("production_database")
-if db_config != "undefined"
-    # Use encrypted credentials
-    connection = program.odbc.connect(
-        "Driver={PostgreSQL};" +
-        "Server=" + db_config.attributes.host + ";" +
-        "Database=" + db_config.attributes.database
-    )
+if db_config != "undefined":
+    # Use encrypted credentials securely
+    server_config = {
+        type: "postgresql",
+        host: db_config.attributes.host,
+        port: 5432,
+        database: db_config.attributes.database,
+        username: db_config.attributes.username,
+        password: db_config.attributes.password
+    }
+    program.odbc.server("production", server_config)
 ```
 
 ### Professional CLI Applications
